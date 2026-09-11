@@ -16,4 +16,23 @@ while True:
         print("❌ Error: Please enter a valid number.\n")
         continue
     quantity = int(user_input)
-    
+
+    if quantity < 0:
+        print("❌ Error: Negative values are not allowed.\n")
+        failed_entries += 1
+        continue
+
+    inventory += quantity
+    print(f"✓ Added {quantity} units. Current inventory: {inventory}\n")
+
+    if inventory > 500:
+        print("⚠️  ALERT: Inventory exceeds 500 units!")
+        print(f"Current inventory: {inventory} units")
+        print("Breaking loop due to overstock...\n")
+        break
+
+print("\n" + "="*40)
+print("📊 FINAL REPORT")
+print("="*40)
+print(f"Total Units Processed: {inventory}")
+print("="*40)

@@ -1,6 +1,3 @@
-## auditor.py
-
-# 1. Initialize inventory to zero
 inventory = 0
 total_processed = 0  # Count of successful entries
 failed_entries = 0    # Count of rejected entries
@@ -8,15 +5,14 @@ failed_entries = 0    # Count of rejected entries
 print("=== Inventory Management System ===")
 print("Enter stock quantities (type 'quit' to exit)\n")
 
-# 2. Continuous loop using while
-while True:
-    user_input = input("Enter stock quantity: ").strip()
+def get_valid_input():
+    while True:
+        user_input = input("Enter stock quantity: ").strip()
+        
+        # Check if user wants to quit
+        if user_input.lower() == 'quit':
+            break
     
-    # Check if user wants to quit
-    if user_input.lower() == 'quit':
-        break
-    
-    # 3 & 4. Validate input is a valid integer
     if not user_input.isdigit() and not (user_input.startswith('-') and user_input[1:].isdigit()):
         print("❌ Error: Please enter a valid number.\n")
         failed_entries += 1
@@ -42,8 +38,14 @@ while True:
         print(f"Current inventory: {inventory} units")
         print("Breaking loop due to overstock...\n")
         break
+def process_delivery(current_total, new_value):
+    return current_total + new_value
 
-# 8. Final Report
+def calculate_tax(amount)
+    tax_rate = 0.1 
+    return amount * tax_rate
+
+
 print("\n" + "="*40)
 print("📊 FINAL REPORT")
 print("="*40)

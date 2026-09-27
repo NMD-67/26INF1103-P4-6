@@ -1,15 +1,9 @@
-inventory = 0
-failed_entries = 0    # Count of rejected entries
-deliveries_processed = 0  # Count of successful entries
-
-print("=== Inventory Management System ===")
-print("Enter stock quantities (type 'quit' to exit)\n")
-
+# Function to load orders from file
 def load_inventory():
     orders = []
 
     try:
-        file = open("inventory.txt", "r")
+        file = open("orders.txt", "r")
         lines = file.readlines()
 
         for line in lines:
@@ -32,17 +26,32 @@ def load_inventory():
 
     return orders
 
-def save_inventory(orders):
-    file = open("inventory.txt", "w")
 
-    for order in orders:
-        product_name = order[0]
-        quantity = order[1]     
-        file.write(product_name + "," + str(quantity) + "\n")
+# Function to save orders to file
+def save_inventory(orders):
+    file = open("orders.txt", "w")
+
+    for i in orders:
+        file.write(str(i[0]) + "," + i[1] + "," + str(i[2]) + "\n")
 
     file.close()
-    print("Inventory successfully saved to inventory.txt")
-    
+    print("Inventory successfully saved to orders.txt")
+
+
+# Function to get product name
+def get_product_name():
+    name = input("Enter product name or type quit: ")
+
+    if name.lower() == "quit":
+        return "quit"
+
+    if name.strip() == "":
+        print("Error: Product name cannot be empty.")
+        return None
+
+    return name
+
+# Function to get quantity
 def get_quantity():
     user_input = input("Enter quantity: ")
 
@@ -58,40 +67,37 @@ def get_quantity():
 
     return quantity
 
-def get_product_name():
-    name = input("Enter product name or type quit: ")
-
-    if name.lower() == "quit":
-        return "quit"
-
-    if name.strip() == "":
-        print("Error: Product name cannot be empty.")
-        return None
-
-    return name
-
-# Function to process a delivery
-def process_delivery(orders, product_name, quantity):
-    orders.append([product_name, quantity])
+# Function to add order
+def process_delivery(orders, order_id, product_name, quantity):
+    orders.append([order_id, product_name, quantity])
     return orders
 
+# Function to calculate tax
+def calculate_tax(amount):
+    tax = amount * 0.10
+    return tax
 
-
-# Function to print the final report
+# Function to print final report
 def generate_report(total_orders, failed_attempts):
     print("\nFinal Report")
     print("Total Orders Processed:", total_orders)
+    for order in orders:
+        print(str(order[0]) + ", " + order[1] + ", " + str(order[2]))
     print("Number of Failed/Rejected Entries:", failed_attempts)
 
-
-# Main program starts here
-
+# Main program
 orders = load_inventory()
 failed_entries = 0
 
+# Decide starting ID
+if len(orders) == 0:
+    next_id = 1000
+else:
+    next_id = len(orders) + 1000
+
 print("Current Orders:")
 for order in orders:
-    print(order + ", " + str(order))
+    print(str(order[0]) + ", " + order[1] + ", " + str(order[2]))
 
 while True:
     product_name = get_product_name()
@@ -109,11 +115,18 @@ while True:
         failed_entries = failed_entries + 1
         continue
 
-    orders = process_delivery(orders, product_name, quantity)
+    orders = process_delivery(orders, next_id, product_name, quantity)
+
+    tax = calculate_tax(quantity)
 
     print("\nNew Order Added:")
-    print(product_name + "," + str(quantity))
+    print(str(next_id) + "," + product_name + "," + str(quantity))
+    print("Order successfully saved to orders.txt")
     print()
 
-save_inventory(orders)
+    next_id = next_id + 1
+
+    save_inventory(orders)
+
+
 generate_report(len(orders), failed_entries)

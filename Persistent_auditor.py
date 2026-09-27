@@ -91,9 +91,9 @@ failed_entries = 0
 
 # Decide starting ID
 if len(orders) == 0:
-    next_id = 1000
+    next_id = 1001
 else:
-    next_id = len(orders) + 1000
+    next_id = len(orders) + 1001
 
 print("Current Orders:")
 for order in orders:

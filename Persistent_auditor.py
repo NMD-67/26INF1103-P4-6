@@ -5,28 +5,73 @@ deliveries_processed = 0  # Count of successful entries
 print("=== Inventory Management System ===")
 print("Enter stock quantities (type 'quit' to exit)\n")
 
-def get_valid_input():
-    user_input = input("Enter stock quantity or type quit: ")
+def load_inventory():
+    orders = []
 
-    if user_input.lower() == "quit":
-        return "quit"
+    try:
+        file = open("inventory.txt", "r")
+        lines = file.readlines()
+
+        for line in lines:
+            line = line.strip()
+            if line != "":
+                parts = line.split(",")
+
+                if len(parts) == 2:
+                    product_name = parts
+                    quantity = int(parts)
+                    orders.append([product_name, quantity])
+
+        file.close()
+
+    except FileNotFoundError:
+        print("No inventory file found. Starting with empty inventory.")
+
+    return orders
+
+def save_inventory(orders):
+    file = open("inventory.txt", "w")
+
+    for order in orders:
+        product_name = order
+        quantity = order
+        file.write(product_name + "," + str(quantity) + "\n")
+
+    file.close()
+    print("Inventory successfully saved to inventory.txt")
+    
+def get_quantity():
+    user_input = input("Enter quantity: ")
 
     if not user_input.isdigit():
         print("Error: Please enter a valid whole number.")
         return None
 
-    number = int(user_input)
+    quantity = int(user_input)
 
-    if number < 0:
+    if quantity < 0:
         print("Error: Negative numbers are not allowed.")
         return None
 
-    return number
+    return quantity
+
+def get_product_name():
+    name = input("Enter product name or type quit: ")
+
+    if name.lower() == "quit":
+        return "quit"
+
+    if name.strip() == "":
+        print("Error: Product name cannot be empty.")
+        return None
+
+    return name
 
 # Function to process a delivery
-def process_delivery(current_total, new_value):
-    new_total = current_total + new_value
-    return new_total
+def process_delivery(orders, product_name, quantity):
+    orders.append([product_name, quantity])
+    return orders
+
 
 # Function to calculate tax
 def calculate_tax(amount):
@@ -34,33 +79,45 @@ def calculate_tax(amount):
     return tax
 
 # Function to print the final report
-def generate_report(total_units, failed_attempts, deliveries_processed):
+def generate_report(total_orders, failed_attempts):
     print("\nFinal Report")
-    print("Total Units Processed:", total_units)
-    print("Total Deliveries Processed:", deliveries_processed)
+    print("Total Orders Processed:", total_orders)
     print("Number of Failed/Rejected Entries:", failed_attempts)
 
-while True:
-    value = get_valid_input()
 
-    if value == "quit":
+# Main program starts here
+
+orders = load_inventory()
+failed_entries = 0
+
+print("Current Orders:")
+for order in orders:
+    print(order + ", " + str(order))
+
+while True:
+    product_name = get_product_name()
+
+    if product_name == "quit":
         break
 
-    elif value is None:
+    if product_name is None:
         failed_entries = failed_entries + 1
+        continue
 
-    else:
-        inventory = process_delivery(inventory, value)
-        tax = calculate_tax(value)
-        deliveries_processed = deliveries_processed + 1
+    quantity = get_quantity()
 
-        print("Delivery added:", value)
-        print("Tax for this delivery:", tax)
-        print("Current inventory total:", inventory)
+    if quantity is None:
+        failed_entries = failed_entries + 1
+        continue
 
-        if inventory >= 500:
-            print("OVERSTOCK ALERT: Total inventory has reached 500 units.")
-            break
+    orders = process_delivery(orders, product_name, quantity)
 
-# Print final report when user quits
-generate_report(inventory, failed_entries, deliveries_processed)
+    tax = calculate_tax(quantity)
+
+    print("\nNew Order Added:")
+    print(product_name + "," + str(quantity))
+    print("Tax for this order:", tax)
+    print()
+
+save_inventory(orders)
+generate_report(len(orders), failed_entries)

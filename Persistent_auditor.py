@@ -14,13 +14,16 @@ def load_inventory():
 
         for line in lines:
             line = line.strip()
+
             if line != "":
                 parts = line.split(",")
 
-                if len(parts) == 2:
-                    product_name = parts
-                    quantity = int(parts)
-                    orders.append([product_name, quantity])
+                if len(parts) == 3:
+                    order_id = int(parts[0])
+                    product_name = parts[1]
+                    quantity = int(parts[2])
+
+                    orders.append([order_id, product_name, quantity])
 
         file.close()
 
@@ -33,8 +36,8 @@ def save_inventory(orders):
     file = open("inventory.txt", "w")
 
     for order in orders:
-        product_name = order
-        quantity = order
+        product_name = order[0]
+        quantity = order[1]     
         file.write(product_name + "," + str(quantity) + "\n")
 
     file.close()
@@ -73,10 +76,6 @@ def process_delivery(orders, product_name, quantity):
     return orders
 
 
-# Function to calculate tax
-def calculate_tax(amount):
-    tax = amount * 0.10
-    return tax
 
 # Function to print the final report
 def generate_report(total_orders, failed_attempts):
@@ -112,11 +111,8 @@ while True:
 
     orders = process_delivery(orders, product_name, quantity)
 
-    tax = calculate_tax(quantity)
-
     print("\nNew Order Added:")
     print(product_name + "," + str(quantity))
-    print("Tax for this order:", tax)
     print()
 
 save_inventory(orders)

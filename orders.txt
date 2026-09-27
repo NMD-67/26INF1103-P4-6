@@ -1,1 +1,4 @@
-
+1000,Wireless Mouse,2
+1001,Keyboard,1
+1002,USB Cable,3
+1003,Laptop Stand,2

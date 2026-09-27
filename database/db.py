@@ -163,7 +163,7 @@ def get_user(student_id):
 
         user = user_rows[0]
         
-        return {"success": True, "user": user}
+        return {"success": True, "user": user, "status": 200}
     except gspread.exceptions.CellNotFound:
         return {"success": False, "error": "User not found!"}
 

@@ -1,11 +1,9 @@
-# persistent_auditor.py
-
 # Function to load orders from file
 def load_inventory():
     orders = []
 
     try:
-        file = open("inventory.txt", "r")
+        file = open("orders.txt", "r")
         lines = file.readlines()
 
         for line in lines:
@@ -15,9 +13,9 @@ def load_inventory():
                 parts = line.split(",")
 
                 if len(parts) == 3:
-                    order_id = int(parts)
-                    product_name = parts
-                    quantity = int(parts)
+                    order_id = int(parts[0])
+                    product_name = parts[1]
+                    quantity = int(parts[2])
 
                     orders.append([order_id, product_name, quantity])
 
@@ -28,15 +26,17 @@ def load_inventory():
 
     return orders
 
+
 # Function to save orders to file
 def save_inventory(orders):
-    file = open("inventory.txt", "w")
+    file = open("orders.txt", "w")
 
-    for order in orders:
-        file.write(str(order[0]) + "," + order[1] + "," + str(order[2]) + "\n")
+    for i in orders:
+        file.write(str(i[0]) + "," + i[1] + "," + str(i[2]) + "\n")
 
     file.close()
-    print("Inventory successfully saved to inventory.txt")
+    print("Inventory successfully saved to orders.txt")
+
 
 # Function to get product name
 def get_product_name():
@@ -81,6 +81,8 @@ def calculate_tax(amount):
 def generate_report(total_orders, failed_attempts):
     print("\nFinal Report")
     print("Total Orders Processed:", total_orders)
+    for order in orders:
+        print(str(order[0]) + ", " + order[1] + ", " + str(order[2]))
     print("Number of Failed/Rejected Entries:", failed_attempts)
 
 # Main program
@@ -91,11 +93,11 @@ failed_entries = 0
 if len(orders) == 0:
     next_id = 1000
 else:
-    next_id = orders[-1] + 1
+    next_id = len(orders) + 1000
 
 print("Current Orders:")
 for order in orders:
-    print(str(order) + ", " + order + ", " + str(order))
+    print(str(order[0]) + ", " + order[1] + ", " + str(order[2]))
 
 while True:
     product_name = get_product_name()
@@ -119,10 +121,12 @@ while True:
 
     print("\nNew Order Added:")
     print(str(next_id) + "," + product_name + "," + str(quantity))
-    print("Tax for this order:", tax)
+    print("Order successfully saved to orders.txt")
     print()
 
     next_id = next_id + 1
 
-save_inventory(orders)
+    save_inventory(orders)
+
+
 generate_report(len(orders), failed_entries)

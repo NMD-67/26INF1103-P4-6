@@ -96,6 +96,16 @@ VALIDATORS = {
 
 
 # ---------- input ----------
+def validate_field(raw: str, field: dict) -> tuple:
+    """Validate one CLI or Telegram answer without prompting or printing."""
+    raw = raw.strip()
+    if not raw:
+        if field["required"]:
+            return None, "This field is required."
+        return ([] if field["kind"] == "list" else None), None
+    return VALIDATORS[field["kind"]](raw, field)
+
+
 def _show_options(field: dict) -> None:
     if field["kind"] == "choice":
         for number, option in enumerate(field["options"], start=1):
@@ -110,12 +120,7 @@ def ask_field(field: dict):
         suffix += " (optional, Enter to skip)"
     while True:
         raw = input(f"{field['label']}{suffix}: ").strip()
-        if not raw:
-            if field["required"]:
-                show_error("This field is required.")
-                continue
-            return [] if field["kind"] == "list" else None
-        value, error = VALIDATORS[field["kind"]](raw, field)
+        value, error = validate_field(raw, field)
         if error:
             show_error(error)
             continue
@@ -161,6 +166,22 @@ def confirm(question: str) -> bool:
 
 
 # ---------- views ----------
+def profile_label(key: str) -> str:
+    """Turn stored field keys into readable labels, preserving acronyms."""
+    labels = {
+        "student_id": "Student ID", "mbti": "MBTI", "ccas": "CCAs",
+        "year": "Year of Study", "events": "SIT Events",
+    }
+    return labels.get(key, key.replace("_", " ").title())
+
+
+def profile_value(key: str, value) -> str:
+    """Use friendly display text without changing the stored profile value."""
+    if key == "here_for" and isinstance(value, str) and value.strip().lower() == "both":
+        return "Relationships and Friends"
+    return _format_value(value)
+
+
 def _format_value(value) -> str:
     if isinstance(value, list):
         return ", ".join(value) if value else "-"

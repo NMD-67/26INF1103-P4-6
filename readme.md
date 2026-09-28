@@ -147,3 +147,41 @@ py tests/test_profile_sync.py
 ```
 
 These checks supplement, but do not replace, the assignment's AI business-rule tests.
+
+
+## Telegram profile setup
+
+Start the bot from the repository root (with dependencies installed):
+
+```powershell
+py -m tele.bot
+```
+
+The existing `.env` supplies `TELE_API_KEY` and `EMAIL_PASSWORD` for the bot
+and email login. The existing service-account file is required for Sheets.
+Run only one polling instance of this bot token; coordinate with the team
+before replacing an already-running instance.
+
+In a private Telegram chat:
+
+1. `/login <student_id>` and then `/otp <student_id> <otp>` verify the account.
+2. `/setup` collects the same profile fields as the CLI, using the verified ID.
+3. Reply with text or option numbers; `/skip` skips optional questions only.
+4. Review the summary and send `/save` to save JSON and sync the `users` row.
+5. `/profile` displays the saved sheet profile. Its setup button restarts the full form.
+
+`/cancel` discards an unsaved draft; `/setup` starts it again. Nothing is
+written until `/save`. If Sheets sync fails, the JSON save remains and `/save`
+can retry. Drafts exist only in memory and are lost on bot restart. Existing
+single-field editing remains available; finish or cancel setup before using it.
+
+Offline Telegram tests (no real email, Telegram messages or Sheets writes):
+
+```powershell
+py tests/test_telegram_setup.py
+py tests/test_profile_sync.py
+```
+
+The Dockerfile includes the shared profile modules used by the bot. The live
+Telegram/OTP flow and Docker build still require verification in the team's
+runtime; offline tests do not contact these external services.

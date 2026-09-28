@@ -18,7 +18,12 @@ user_sheet = sheet.worksheet("users")
 otp_sheet = sheet.worksheet("otp")
 bot_sheet = sheet.worksheet("bot_users")
 
-def get_header_values(sheet):
+def safe_json_load(value):
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return value
+
+def get_header_values(sheet: gspread.Worksheet):
     headers = sheet.row_values(1)
     return headers
 
@@ -82,6 +87,9 @@ def get_row_values(worksheet, row_numbers):
     values.append(dict(zip(headers, row_values)))
 
   return values
+
+def update_field(worksheet, row, col, value):
+    worksheet.update_cell(row, col, value)
 
 # ---OTP Functions---
 def upload_otp(student_id, otp):
@@ -162,7 +170,7 @@ def get_user(student_id):
             return {"success": False, "error": "User not found!", "status": 404}
 
         user = user_rows[0]
-        
+        #TODO: Convert arrays from string into list
         return {"success": True, "user": user, "status": 200}
     except gspread.exceptions.CellNotFound:
         return {"success": False, "error": "User not found!"}
@@ -195,19 +203,26 @@ def add_user(**fields):
         print(f"Error when adding user: {e}")
         return 500
 
-def update_user(student_details):
+def update_user(**student_details):
     try:
+        print("Updating user")
+        headers = get_header_values(user_sheet)
+        if "student_id" not in student_details:
+            return 400
         student_id = student_details.get("student_id")
-        print(f'Updating user: {student_details}')
-        original_user = get_user(student_id)
-        if original_user is not None:
-            for key, value in student_details.items():
-                if key != "student_id":
-                    user_sheet.update_cell(original_user.row, original_user.col + list(student_details.keys()).index(key), value)
-            return 200  # User updated successfully
-        else:
-            print(f"User with student_id {student_id} not found.")
-            return 404  # User not found
+        user_response = user_sheet.find(str(student_id))
+        if user_response is None:
+            return 404
+        row = user_response.row
+        if row is None:
+            return 404
+
+        for index, column in enumerate(headers):
+            if column in student_details and column != "student_id":
+                print(f"Col: {column}, row: {row}, index: {index}, value: {student_details.get(column)}")
+                value = safe_json_load(student_details.get(column))
+                user_sheet.update_cell(row, index + 1, value)
+        return 200
     except gspread.exceptions.APIError as e:
         print(f"API error while updating user: {e}")
         return 500  # API error
@@ -239,5 +254,6 @@ def delete_user(student_id):
 # get_otp("2603197")
 #get_row_values(otp_sheet, 2)
 #print(get_user("2676767"))
-student_json = {"student_id": "234567", "name": ["bhbhbh", "kkkk"]}
-print(add_user(**student_json))
+# student_json = {"student_id": "234567", "name": "Giggg"}
+# print(update_user(**student_json))
+# get_header_values(user_sheet)

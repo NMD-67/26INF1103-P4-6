@@ -1,7 +1,43 @@
+import database.db
 
+def display_match(student, compatibility):
+    print("\n" + "=" * 60)
+    print("                    ✨ YOUR MATCH ✨")
+    print("=" * 60)
 
-def display_match(userid, compatibility):
-    print(userid, compatibility)
+    # Basic information
+    print(f"\n  {student['name']}")
+    print(f"  {student['gender']}  |  Year {student['year']}  |  {student['course']}")
+    print(f"  MBTI: {student['mbti']}")
+
+    # Compatibility
+    print("\n" + "-" * 60)
+    print(f"  💕 COMPATIBILITY: {compatibility}%")
+    print("-" * 60)
+
+    # Bio
+    print("\n  📝 ABOUT")
+    print(f"  {student['bio']}")
+
+    # Interests
+    print("\n  🎨 INTERESTS")
+    print(f"  Hobbies:          {student['hobbies']}")
+    print(f"  CCAs:             {student['ccas']}")
+    print(f"  Interest Groups:  {student['interest_groups']}")
+    print(f"  Events:           {student['events']}")
+
+    # Matching information
+    print("\n  💭 LOOKING FOR")
+    print(f"  Here for:         {student['here_for']}")
+    print(f"  Match preference: {student['match_preference']}")
+
+    # Expectations
+    print("\n  🤝 EXPECTATIONS")
+    print(f"  {student['expectations']}")
+
+    print("\n" + "=" * 60)
+    print("       [A] Accept       [R] Reject       [N] Next")
+    print("=" * 60)
 
 
 current_match = 0
@@ -69,5 +105,10 @@ def update_db():
     # let raphael do (?)
     pass 
 
-print(show_next_match(load_matches()))
+while current_match < len(load_matches()):
+    show_next_match(load_matches())
 
+    user_input = input("\nPress N to see the next match: ")
+
+    if user_input.lower() != "n":
+        print("Please press N to continue.")

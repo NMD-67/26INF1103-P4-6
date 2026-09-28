@@ -81,7 +81,7 @@ PROFILE_FIELDS = [
      "required": True, "kind": "choice", "options": ["1", "2", "3", "4"]},
     {"key": "course", "label": "Course", "section": SECTION_BACKGROUND,
      "required": True, "kind": "choice", "options": SIT_COURSES},
-    {"key": "description", "label": "Description", "section": SECTION_BACKGROUND,
+    {"key": "bio", "label": "Bio", "section": SECTION_BACKGROUND,
      "required": False, "kind": "text", "min_len": 1, "max_len": 300,
      "hint": "max 300 characters; Tell us more about yourself"},
     {"key": "religion", "label": "Religion", "section": SECTION_BACKGROUND,

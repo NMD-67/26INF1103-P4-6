@@ -45,27 +45,27 @@ USER_PROFILE_HANDLERS = {
         "label": "MBTI",
         "callback_data": "edit_mbti"
     },
-    "sexual_orientation": {
-        "label": "Sexual Orientation",
-        "callback_data": "edit_sexual_orientation"
+    "match_preference": {
+        "label": "Match preference (Male, Female, Both)",
+        "callback_data": "edit_match_preference"
     },
     "here_for": {
         "label": "Here For",
         "callback_data": "edit_here_for",
         "suggested_values": ["Friends", "Relationship"]
     },
-    "expectation": {
+    "expectations": {
         "label": "Expectation",
-        "callback_data": "edit_expectation",
+        "callback_data": "edit_expectations",
         "suggested_values": ["Short term", "Long term"]
     },
     "insta_handle": {
         "label": "Instagram Handle",
         "callback_data": "edit_insta_handle"
     },
-    "cca": {
+    "ccas": {
         "label": "CCA",
-        "callback_data": "edit_cca",
+        "callback_data": "edit_ccas",
         "is_list": True
     } 
 }
@@ -186,6 +186,12 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if editing_field:
         new_value = update.message.text
+        if editing_field == "edit_match_preference":
+            choices = {"male": "Male", "female": "Female", "both": "Both"}
+            new_value = choices.get(new_value.strip().lower())
+            if new_value is None:
+                await send_msg(update, "Please enter Male, Female, or Both.")
+                return
         tele_id = get_tele_id(update)
         student_id = get_bot_user(tele_id)["student_id"]
 

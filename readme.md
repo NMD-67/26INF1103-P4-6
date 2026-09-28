@@ -109,3 +109,41 @@ This file contans all the functions and modules for user handling. Note that as 
 |GetUserInfo | student_id `int` | Dict {<br>success: `bool`,<br> user: `dict`,<br> status: `int`, error: `str`<br>} | Return value will on have an error value if an error occured. |
 |UpdateUserInfo | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the update |
 |DeleteUser | student_id `int`| status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the deletion |
+
+
+## Profile CLI and Google Sheets sync
+
+Run from the repository root:
+
+```powershell
+py -m pip install -r requirements.txt
+py main.py
+```
+
+The profile CLI saves to `data/profiles.json` first, then syncs the entered
+profile to the `users` tab of the SITogether spreadsheet. Place the Google
+service account credentials at `database/service_account.json` locally;
+never commit credentials. The service account needs edit access to the sheet.
+An unsuccessful sync reports an error without losing the JSON save.
+
+Sync matches the exact `student_id` column and refuses duplicate IDs. It updates
+only form fields, preserving `insta_handle` and other unrelated columns. Lists
+display as comma-separated text, with empty lists shown as blank cells. Derived `traits` and `profile_complete` remain in the
+local JSON file. This is one-way upload on save, not automatic two-way sync or
+a bulk upload of existing JSON records.
+
+The September 2026 header migration keeps `bio`, renames `expectation` to
+`expectations`, `cca` to `ccas`, `sit_event` to `events`, and `tele_handle` to
+`telegram_handle`. `sexual_orientation` is replaced by `match_preference`;
+existing users must re-enter Male, Female, or Both. Original profiles are in
+`users_backup_20260928_before_headers`. Keep other running bot copies aligned
+with these new headers. Old local `description` fields are also exposed as
+`bio` when loading profiles.
+
+Run the offline sync regression checks without credentials or live API calls:
+
+```powershell
+py tests/test_profile_sync.py
+```
+
+These checks supplement, but do not replace, the assignment's AI business-rule tests.

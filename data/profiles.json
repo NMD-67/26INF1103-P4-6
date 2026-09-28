@@ -1,0 +1,33 @@
+[
+  {
+    "bio": "I am a boy",
+    "birthday": "22/05/2004",
+    "ccas": [],
+    "course": "Accountancy",
+    "events": [],
+    "expectations": null,
+    "gender": "Male",
+    "here_for": "Friends",
+    "hobbies": [
+      "idk"
+    ],
+    "interest_groups": [],
+    "match_preference": "Male",
+    "mbti": null,
+    "name": "test",
+    "profile_complete": true,
+    "religion": "Buddhism",
+    "student_id": "2601973",
+    "telegram_handle": "@raphe",
+    "traits": {
+      "chinese_zodiac": "Monkey",
+      "day_master": "Yin Metal",
+      "day_pillar": "Xin-Chou",
+      "month_pillar": "Ji-Si",
+      "personality_name": null,
+      "western_zodiac": "Gemini",
+      "year_pillar": "Jia-Shen"
+    },
+    "year": "1"
+  }
+]

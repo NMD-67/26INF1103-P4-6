@@ -38,6 +38,12 @@ def run_profile_setup() -> None:
     if io_manager.confirm("\nSave this profile?"):
         saved = data_manager.save_profiles(DATA_PATH, data_manager.upsert_profile(profiles, profile))
         io_manager.show("Profile saved." if saved else "Could not save the profile.")
+        if saved:
+            synced, message = data_manager.sync_profile_to_sheets(profile)
+            if synced:
+                io_manager.show(message)
+            else:
+                io_manager.show_error(message)
     else:
         io_manager.show("Profile discarded.")
 

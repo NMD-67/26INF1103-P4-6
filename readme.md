@@ -106,6 +106,6 @@ This file contans all the functions and modules for user handling. Note that as 
 | Function | Parameters | Return | Remarks |
 |---|---|---|---|
 |Login | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the login |
-|GetUserInfo | student_id `int` | User JSON `object` | Returns all the info on a user based on their studentID |
+|GetUserInfo | student_id `int` | Dict {<br>success: `bool`,<br> user: `dict`,<br> status: `int`, error: `str`<br>} | Return value will on have an error value if an error occured. |
 |UpdateUserInfo | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the update |
 |DeleteUser | student_id `int`| status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the deletion |

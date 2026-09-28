@@ -77,7 +77,7 @@ project/
 {
   student_id: int,
   name: str,
-  birthday: int/datetime, #datetime is a class; need to check if can use
+  birthday: int/datetime,
   gender: str,
   year: int,
   course: str,
@@ -96,12 +96,16 @@ project/
 }
 ```
 
+##### How to add user as JSON
+
+Go to `/database/db` and scroll to the bottom. There is an example of how it can be done. Simply replace the `student_json` object with the one you wanna import.
+
 #### auth.py
 
 This file contans all the functions and modules for user handling. Note that as the functions require updating of the database, all the functions are asynchronious. The functions are as such:
 | Function | Parameters | Return | Remarks |
 |---|---|---|---|
 |Login | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the login |
-|GetUserInfo | student_id `int` | User JSON `object` | Returns all the info on a user based on their studentID |
+|GetUserInfo | student_id `int` | Dict {<br>success: `bool`,<br> user: `dict`,<br> status: `int`, error: `str`<br>} | Return value will on have an error value if an error occured. |
 |UpdateUserInfo | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the update |
 |DeleteUser | student_id `int`| status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the deletion |

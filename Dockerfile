@@ -1,4 +1,11 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
+
 WORKDIR /app
-COPY "Modular_auditor.py" .
-CMD ["python", "Modular_auditor.py"]
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/ ./src/
+COPY tele/ ./tele/
+
+CMD ["python", "-m" , "tele.bot"]

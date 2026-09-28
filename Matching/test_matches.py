@@ -1,4 +1,5 @@
 from logic import compatibility_label, parse_ai_matches, sort_matches
+import database.db
 
 ai_output = """
 Aidan: 70%

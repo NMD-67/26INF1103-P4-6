@@ -1,22 +1,57 @@
-import gspread
-from google.oauth2.service_account import Credentials
-import os
+"""Google Sheets access for profiles, login codes, and Telegram links."""
+from __future__ import annotations
+
 import datetime
 import json
+import logging
+import os
+from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "service_account.json")
+import gspread
+import logic_manager
+from profile_schema import PROFILE_FIELDS
 
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
-client = gspread.authorize(creds)
+logger = logging.getLogger(__name__)
+SERVICE_ACCOUNT_FILE = Path(__file__).resolve().parent / "service_account.json"
+_spreadsheet = None
+_worksheets = {}
 
-sheet = client.open("SITogether")
-user_sheet = sheet.worksheet("users")
-otp_sheet = sheet.worksheet("otp")
-bot_sheet = sheet.worksheet("bot_users")
+
+def get_sheet(name):
+    """Connect on first use, so importing this module needs no credentials/network."""
+    global _spreadsheet
+    if _spreadsheet is None:
+        if not SERVICE_ACCOUNT_FILE.is_file():
+            raise FileNotFoundError("service_account.json is missing")
+        client = gspread.service_account(filename=str(SERVICE_ACCOUNT_FILE))
+        client.set_timeout(20)
+        spreadsheet_id = os.environ.get(
+            "SITOGETHER_SPREADSHEET_ID", "1N_2QPdtVigDzzmyjlyUB_AIdLArnxbScmLbq0s2UCdU"
+        )
+        _spreadsheet = client.open_by_key(spreadsheet_id)
+        _worksheets.clear()
+    if name not in _worksheets:
+        _worksheets[name] = _spreadsheet.worksheet(name)
+    return _worksheets[name]
+
+
+def read_profile(student_id):
+    """Read exactly one student ID; never match a different column accidentally."""
+    worksheet = get_sheet("users")
+    headers = worksheet.row_values(1)
+    column = headers.index("student_id") + 1
+    matches = []
+    for row, value in enumerate(worksheet.col_values(column), start=1):
+        if row > 1 and str(value) == str(student_id):
+            matches.append(row)
+    if len(matches) > 1:
+        raise ValueError("Duplicate student IDs need review")
+    if not matches:
+        return None
+    values = worksheet.row_values(matches[0])
+    values += [""] * (len(headers) - len(values))
+    return dict(zip(headers, values))
+
 
 def safe_json_load(value):
     if isinstance(value, (list, dict)):
@@ -96,7 +131,7 @@ def upload_otp(student_id, otp):
     try:
       current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       row = [student_id, otp, current_datetime]
-      otp_sheet.append_row(row)
+      get_sheet("otp").append_row(row)
       return 200
     except Exception as e:
         print(f"An error occured when creating otp: {e}")
@@ -104,11 +139,11 @@ def upload_otp(student_id, otp):
 
 def get_otp(student_id):
     try:
-      user_row_number = get_row_numbers_by_column_name(otp_sheet, "student_id", student_id)
+      user_row_number = get_row_numbers_by_column_name(get_sheet("otp"), "student_id", student_id)
       print(f"User row number: {user_row_number}")
       if not user_row_number["success"]:
           return 500
-      user_row = get_row_values(otp_sheet, user_row_number["rows"])
+      user_row = get_row_values(get_sheet("otp"), user_row_number["rows"])
       if user_row is None or len(user_row) < 1:
           return 404
       print(user_row)
@@ -123,7 +158,7 @@ def delete_otp(row_numbers):
     i = 0
     for row_number in row_numbers:
       print(f"Deleting otp row {row_number}")
-      res = otp_sheet.delete_rows(row_number - i)
+      res = get_sheet("otp").delete_rows(row_number - i)
       i += 1
       print(res)
     return 200
@@ -134,46 +169,32 @@ def delete_otp(row_numbers):
 # ---Bot Functions---
 def save_user(tele_id, student_id):
     # Check if user alr exists
-    cell = bot_sheet.find(str(tele_id))
+    cell = get_sheet("bot_users").find(str(tele_id))
     if cell:
-        bot_sheet.update_cell(cell.row, 2, student_id)
+        get_sheet("bot_users").update_cell(cell.row, 2, student_id)
     else:
-        bot_sheet.append_row([tele_id, student_id])
+        get_sheet("bot_users").append_row([tele_id, student_id])
 
 def get_bot_user(tele_id):
-    cell = bot_sheet.find(str(tele_id))
+    cell = get_sheet("bot_users").find(str(tele_id))
     if(cell):
-        row = bot_sheet.row_values(cell.row)
+        row = get_sheet("bot_users").row_values(cell.row)
         student_id = row[1]
         return {"tele_id": tele_id, "student_id": student_id}
     return None
 
 # ---User Functions---
 def get_user(student_id):
-    """
-    Returns a response dict {
-    "success": bool,
-    "status": int,
-    "error": str,
-    "user": dict
-    }
-    """
-    print(f'Getting user: {student_id}')
+    """Keep the existing login/profile response format using the shared reader."""
     try:
-        user = user_sheet.find(student_id)
-
+        user = read_profile(student_id)
         if user is None:
             return {"success": False, "error": "User not found!", "status": 404}
-        user_rows = get_row_values(user_sheet, [user.row])
-
-        if len(user_rows) < 1:
-            return {"success": False, "error": "User not found!", "status": 404}
-
-        user = user_rows[0]
-        #TODO: Convert arrays from string into list
         return {"success": True, "user": user, "status": 200}
-    except gspread.exceptions.CellNotFound:
-        return {"success": False, "error": "User not found!"}
+    except Exception as error:
+        logger.warning("Could not read user (%s)", type(error).__name__)
+        return {"success": False, "error": "Could not read user", "status": 500}
+
 
 def add_user(**fields):
     """
@@ -183,7 +204,7 @@ def add_user(**fields):
     if "student_id" not in fields:
         return 400
     try:
-        headers = user_sheet.row_values(1)  # actual column order in the sheet
+        headers = get_sheet("users").row_values(1)  # actual column order in the sheet
 
         row = []  # build row matching sheet's real column order
         for column in headers:
@@ -194,9 +215,11 @@ def add_user(**fields):
 
         # Check if user exists
         user_result = get_user(fields["student_id"])
-        if user_result["success"]: 
+        if user_result["success"]:
             return 401
-        res = user_sheet.append_row(row)
+        if user_result.get("status") != 404:
+            return 500
+        res = get_sheet("users").append_row(row)
         print(f"res: {res}")
         return 201
     except Exception as e:
@@ -206,11 +229,11 @@ def add_user(**fields):
 def update_user(**student_details):
     try:
         print("Updating user")
-        headers = get_header_values(user_sheet)
+        headers = get_header_values(get_sheet("users"))
         if "student_id" not in student_details:
             return 400
         student_id = student_details.get("student_id")
-        user_response = user_sheet.find(str(student_id))
+        user_response = get_sheet("users").find(str(student_id))
         if user_response is None:
             return 404
         row = user_response.row
@@ -221,7 +244,7 @@ def update_user(**student_details):
             if column in student_details and column != "student_id":
                 print(f"Col: {column}, row: {row}, index: {index}, value: {student_details.get(column)}")
                 value = safe_json_load(student_details.get(column))
-                user_sheet.update_cell(row, index + 1, value)
+                get_sheet("users").update_cell(row, index + 1, value)
         return 200
     except gspread.exceptions.APIError as e:
         print(f"API error while updating user: {e}")
@@ -242,9 +265,9 @@ def update_user(**student_details):
 def delete_user(student_id):
     try:  
       print(f"Deleting student {student_id}")
-      row_number = get_row_numbers_by_column_name(user_sheet, "student_id", student_id)
+      row_number = get_row_numbers_by_column_name(get_sheet("users"), "student_id", student_id)
 
-      res = otp_sheet.delete_rows(row_number[0])
+      res = get_sheet("otp").delete_rows(row_number[0])
       print(res)
       return 200
     except Exception as e:
@@ -252,8 +275,149 @@ def delete_user(student_id):
         return 500
 
 # get_otp("2603197")
-#get_row_values(otp_sheet, 2)
+#get_row_values(get_sheet("otp"), 2)
 #print(get_user("2676767"))
 # student_json = {"student_id": "234567", "name": "Giggg"}
 # print(update_user(**student_json))
-# get_header_values(user_sheet)
+# get_header_values(get_sheet("users"))
+
+def sync_profile_to_sheets(profile: dict, partial=False) -> tuple[bool, str]:
+    """Upload one profile; preserve all sheet fields outside the profile form.
+
+    A partial edit writes only supplied form fields and requires an existing row.
+    Lists display as comma-separated text; empty lists display as blank cells.
+    Traits and completeness are calculated by the caller when needed.
+    """
+    try:
+        worksheet = get_sheet("users")
+        headers = worksheet.row_values(1)
+        # Check the spreadsheet columns before writing anything.
+        fields = []
+        for field in PROFILE_FIELDS:
+            fields.append(field["key"])
+        if len(headers) != len(set(headers)):
+            return False, "Google Sheets sync stopped: users headers are missing or duplicated."
+        for key in fields:
+            if key not in headers:
+                return False, "Google Sheets sync stopped: users headers are missing or duplicated."
+            if not partial and key not in profile:
+                return False, "Google Sheets sync stopped: the profile is missing form fields."
+        if "match_preference" in profile and profile["match_preference"] not in ("Male", "Female", "Both"):
+            return False, "Google Sheets sync stopped: please re-enter your match preference."
+
+        # For an edit, include only the fields that the caller supplied.
+        if partial:
+            changed_fields = []
+            for key in fields:
+                if key in profile:
+                    changed_fields.append(key)
+            fields = changed_fields
+        student_id = str(profile["student_id"])
+        id_column = headers.index("student_id") + 1
+        matches = []
+        for row, value in enumerate(worksheet.col_values(id_column), start=1):
+            if row > 1 and str(value) == student_id:
+                matches.append(row)
+        if len(matches) > 1:
+            return False, "Google Sheets sync stopped: duplicate student IDs need review."
+
+        values = {}
+        for key in fields:
+            value = profile[key]
+            if isinstance(value, list):
+                clean_items = []
+                for item in value:
+                    if item is None:
+                        continue
+                    item_text = str(item).strip()
+                    if item_text:
+                        clean_items.append(item_text)
+                value = ", ".join(clean_items)
+            elif isinstance(value, dict):
+                value = json.dumps(value, ensure_ascii=False)
+            if value is None:
+                values[key] = ""
+            else:
+                values[key] = str(value)
+
+        if matches:
+            # Write only owned fields, retaining Instagram and any other columns.
+            from gspread.utils import rowcol_to_a1
+            updates = []
+            row = matches[0]
+            for key in fields:
+                if key == "student_id":
+                    continue
+                column = headers.index(key) + 1
+                cell = rowcol_to_a1(row, column)
+                updates.append({"range": cell, "values": [[values[key]]]})
+            worksheet.batch_update(updates, value_input_option="RAW")
+        elif partial:
+            return False, "Profile not found. Please complete /setup first."
+        else:
+            new_row = []
+            for header in headers:
+                new_row.append(values.get(header, ""))
+            worksheet.append_row(new_row, value_input_option="RAW")
+        return True, "Profile synced to Google Sheets."
+    except Exception as error:
+        # Never print credentials, API response bodies or personal data.
+        logger.warning("Google Sheets sync failed (%s)", type(error).__name__)
+        return False, "Google Sheets sync failed. Check spreadsheet access and connection."
+
+
+# Profile functions used by the CLI and Telegram. Keep these signatures
+# and return values stable when replacing the storage backend.
+def load_profile(student_id):
+    """Read one profile. Return None if missing; let the caller handle outages."""
+    profile = read_profile(student_id)
+    if profile is None:
+        return None
+    profile = normalize_profile(profile)
+    # Derived information is calculated when needed, not stored in a second file.
+    try:
+        profile["traits"] = logic_manager.derive_profile_traits(profile)
+    except (ValueError, TypeError, KeyError):
+        profile["traits"] = {}
+    profile["profile_complete"] = logic_manager.is_profile_complete(profile, PROFILE_FIELDS)
+    return profile
+
+
+def save_profile(profile, partial=False):
+    """Save to Sheets. Only report success when the spreadsheet confirms it."""
+    saved, message = sync_profile_to_sheets(profile, partial=partial)
+    return {"saved": saved, "message": message}
+
+
+def normalize_profile(profile):
+    """Convert spreadsheet list cells into Python lists for the form code."""
+    result = profile.copy()
+    for field in PROFILE_FIELDS:
+        key = field["key"]
+        value = result.get(key)
+        if field["kind"] != "list":
+            if key not in result:
+                result[key] = None
+            continue
+
+        if isinstance(value, str):
+            # Support both historical JSON cells and current comma-separated cells.
+            try:
+                decoded = json.loads(value)
+            except ValueError:
+                decoded = None
+            if isinstance(decoded, list):
+                value = decoded
+            else:
+                value = value.split(",")
+
+        clean_items = []
+        if value is not None:
+            for item in value:
+                if item is None:
+                    continue
+                item_text = str(item).strip()
+                if item_text:
+                    clean_items.append(item_text)
+        result[key] = clean_items
+    return result

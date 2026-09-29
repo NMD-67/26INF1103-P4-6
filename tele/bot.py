@@ -7,18 +7,23 @@ import asyncio
 import secrets
 from telegram.error import TelegramError
 import io_manager
+from database import db
 from tele import profile_setup
 
 from database.db import save_user, get_bot_user
-from src.auth import login_user, validate_otp, get_user_info, edit_user_info
+from src.auth import login_user, validate_otp, get_user_info
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR.parent / ".env")
 
-USER_PROFILE_HANDLERS = {
-    field["key"]: {**field, "label": io_manager.profile_label(field["key"])}
-    for field in profile_setup.PROFILE_FIELDS if field["key"] != "student_id"
-}
+# Build the editable fields from the same questions used during setup.
+USER_PROFILE_HANDLERS = {}
+for field in profile_setup.PROFILE_FIELDS:
+    if field["key"] == "student_id":
+        continue  # A user cannot change the student ID linked to their login.
+    editable_field = field.copy()
+    editable_field["label"] = io_manager.profile_label(field["key"])
+    USER_PROFILE_HANDLERS[field["key"]] = editable_field
 
 def get_tele_id(update: Update):
     tele_id = update.effective_user.id
@@ -159,23 +164,17 @@ async def edit_profile_button_handler(update: Update, context: ContextTypes.DEFA
     context.user_data["editing_field"] = field
     context.user_data["editing_token"] = secrets.token_hex(4)
     definition = USER_PROFILE_HANDLERS[field[5:]]
-    lines = [definition["question"]]
-    if definition.get("hint"):
-        lines.append(definition["hint"])
-    if definition["kind"] in ("choice", "mbti") and definition["key"] != "course":
+    lines = profile_setup.question_lines(definition)
+    if profile_setup.uses_buttons(definition):
         token = context.user_data["editing_token"]
-        buttons = [
-            InlineKeyboardButton(io_manager.profile_value(definition["key"], option),
-                                 callback_data=f"editpick:{token}:{definition['key']}:{index}")
-            for index, option in enumerate(definition["options"])
-        ]
-        width = 4 if definition["kind"] == "mbti" else 2
-        keyboard = InlineKeyboardMarkup([buttons[i:i + width] for i in range(0, len(buttons), width)])
+        prefix = f"editpick:{token}:{definition['key']}"
+        width = 2
+        if definition["kind"] == "mbti":
+            width = 4
+        keyboard = InlineKeyboardMarkup(profile_setup.option_rows(definition, prefix, width))
         lines.append("Tap your new answer below, or /cancel to keep the existing value.")
         await query.message.reply_text("\n".join(lines), reply_markup=keyboard)
         return
-    if definition["kind"] == "choice":
-        lines.extend(f"{i}. {option}" for i, option in enumerate(definition["options"], 1))
     lines.append("Send your new answer, or /cancel to keep the existing value.")
     await profile_setup.reply(update, "\n".join(lines))
 
@@ -188,14 +187,28 @@ async def edit_option_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("This option is unavailable.")
         return
     definition = USER_PROFILE_HANDLERS.get(key)
-    if (prefix != "editpick" or update.effective_chat.type != "private"
-            or profile_setup.STATE_KEY in context.user_data
-            or context.user_data.get("editing_field") != f"edit_{key}"
-            or context.user_data.get("editing_token") != token
-            or not definition or key == "course"
-            or definition["kind"] not in ("choice", "mbti")
-            or not 0 <= index < len(definition["options"])):
-        await query.answer("This menu is no longer active. Use /profile to edit again.")
+    unavailable = "This menu is no longer active. Use /profile to edit again."
+
+    # Only accept buttons from this user's current editing session.
+    if prefix != "editpick" or update.effective_chat.type != "private":
+        await query.answer(unavailable)
+        return
+    if profile_setup.STATE_KEY in context.user_data:
+        await query.answer(unavailable)
+        return
+    if context.user_data.get("editing_field") != f"edit_{key}":
+        await query.answer(unavailable)
+        return
+    if context.user_data.get("editing_token") != token:
+        await query.answer(unavailable)
+        return
+
+    # Check the field and option before looking up the selected answer.
+    if definition is None or not profile_setup.uses_buttons(definition):
+        await query.answer(unavailable)
+        return
+    if not 0 <= index < len(definition["options"]):
+        await query.answer(unavailable)
         return
     await query.answer()
     await text_handler(update, context, raw=definition["options"][index])
@@ -212,43 +225,44 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
         return
     editing_field = context.user_data.get("editing_field")
 
-    if editing_field:
-        if not await profile_setup.private_chat(update):
-            return
-        key = editing_field[5:]
-        definition = USER_PROFILE_HANDLERS.get(key)
-        if definition is None:
-            context.user_data.pop("editing_field", None)
-            await send_msg(update, "This field cannot be edited. Use /profile to refresh.")
-            return
-        new_value, error = io_manager.validate_field(
-            update.effective_message.text if raw is None else raw, definition)
-        if error:
-            await send_msg(update, f"{error}\nPlease try again, or /cancel to keep the existing value.")
-            return
-        # Validation produces real lists; keep the sheet's human-readable format.
-        if isinstance(new_value, list):
-            new_value = ", ".join(new_value)
-        elif new_value is None:
-            new_value = ""
-        try:
-            user = await asyncio.to_thread(get_bot_user, get_tele_id(update))
-            if not user:
-                context.user_data.pop("editing_field", None)
-                await send_msg(update, "Please /login before editing your profile.")
-                return
-            response = await asyncio.to_thread(edit_user_info, str(user["student_id"]), {key: new_value})
-        except Exception:
-            await send_msg(update, "Could not update your profile. Please try again, or /cancel.")
-            return
-        if isinstance(response, dict) and response.get("success"):
-            context.user_data.pop("editing_field", None)
-            context.user_data.pop("editing_token", None)
-            await send_msg(update, "Profile updated. Use /profile to view it.")
-        else:
-            await send_msg(update, "Could not update your profile. Please try again, or /cancel.")
+    if not editing_field:
         return
-                
+
+    if not await profile_setup.private_chat(update):
+        return
+    key = editing_field[5:]
+    definition = USER_PROFILE_HANDLERS.get(key)
+    if definition is None:
+        context.user_data.pop("editing_field", None)
+        await send_msg(update, "This field cannot be edited. Use /profile to refresh.")
+        return
+    if raw is None:
+        raw = update.effective_message.text
+    new_value, error = io_manager.validate_field(raw, definition)
+    if error:
+        await send_msg(update, f"{error}\nPlease try again, or /cancel to keep the existing value.")
+        return
+    try:
+        user = await asyncio.to_thread(get_bot_user, get_tele_id(update))
+        if not user:
+            context.user_data.pop("editing_field", None)
+            await send_msg(update, "Please /login before editing your profile.")
+            return
+        response = await asyncio.to_thread(
+            db.save_profile,
+            {"student_id": str(user["student_id"]), key: new_value}, partial=True)
+    except Exception:
+        await send_msg(update, "Could not update your profile. Please try again, or /cancel.")
+        return
+    if response["saved"]:
+        context.user_data.pop("editing_field", None)
+        context.user_data.pop("editing_token", None)
+        await send_msg(update, "Profile updated. Use /profile to view it.")
+    else:
+        message = response["message"]
+        await send_msg(update, message + " Please retry your answer, or /cancel.")
+    return
+
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile")
@@ -270,8 +284,10 @@ async def configure_command_menu(application):
 
 
 def run_bot():
-    app = (ApplicationBuilder().token(os.environ.get("TELE_API_KEY"))
-           .post_init(configure_command_menu).build())
+    builder = ApplicationBuilder()
+    builder.token(os.environ.get("TELE_API_KEY"))
+    builder.post_init(configure_command_menu)
+    app = builder.build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("otp", otp))

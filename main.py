@@ -1,25 +1,28 @@
 """Entry point: profile setup flow (io -> logic -> data)."""
-import os
-
-import data_manager
+from database import db
 import io_manager
 import logic_manager
 from profile_schema import PROFILE_FIELDS
 
-DATA_PATH = os.environ.get("SITOGETHER_DATA", "data/profiles.json")
 
 
 def get_field(key: str) -> dict:
     """Look up a field definition by key."""
-    return next(f for f in PROFILE_FIELDS if f["key"] == key)
+    for field in PROFILE_FIELDS:
+        if field["key"] == key:
+            return field
+    raise ValueError(f"Unknown profile field: {key}")
 
 
 def run_profile_setup() -> None:
-    profiles = data_manager.load_profiles(DATA_PATH)
     io_manager.show("SITogether - Profile Setup")
 
     student_id = io_manager.ask_field(get_field("student_id"))
-    existing = data_manager.find_profile(profiles, student_id)
+    try:
+        existing = db.load_profile(student_id)
+    except Exception:
+        io_manager.show_error("Could not read your profile. Check your connection and try again.")
+        return
     if existing and not io_manager.confirm("A profile already exists for this ID. Overwrite it?"):
         io_manager.show_profile_summary(existing, PROFILE_FIELDS)
         return
@@ -36,14 +39,11 @@ def run_profile_setup() -> None:
 
     io_manager.show_profile_summary(profile, PROFILE_FIELDS)
     if io_manager.confirm("\nSave this profile?"):
-        saved = data_manager.save_profiles(DATA_PATH, data_manager.upsert_profile(profiles, profile))
-        io_manager.show("Profile saved." if saved else "Could not save the profile.")
-        if saved:
-            synced, message = data_manager.sync_profile_to_sheets(profile)
-            if synced:
-                io_manager.show(message)
-            else:
-                io_manager.show_error(message)
+        result = db.save_profile(profile)
+        if result["saved"]:
+            io_manager.show("Profile saved.")
+        else:
+            io_manager.show_error(result["message"])
     else:
         io_manager.show("Profile discarded.")
 

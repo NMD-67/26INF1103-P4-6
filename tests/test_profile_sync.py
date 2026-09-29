@@ -1,13 +1,11 @@
 """Offline regression checks: run py tests/test_profile_sync.py."""
-import json
 import sys
-import tempfile
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import data_manager
+from database import db
 import io_manager
 import main
 from profile_schema import PROFILE_FIELDS
@@ -30,11 +28,11 @@ def run_checks():
     utils = ModuleType("gspread.utils")
     utils.rowcol_to_a1 = lambda row, col: f"{chr(64 + col)}{row}"
 
-    with patch.dict(sys.modules, {"gspread": api, "gspread.utils": utils}), patch.object(
+    with patch.object(db, "gspread", api), patch.dict(sys.modules, {"gspread.utils": utils}), patch.object(
         Path, "is_file", return_value=True
     ):
         # Existing profile: preserve non-profile columns and target the ID column.
-        assert data_manager.sync_profile_to_sheets(profile)[0]
+        assert db.sync_profile_to_sheets(profile)[0]
         worksheet.col_values.assert_called_with(headers.index("student_id") + 1)
         updates = worksheet.batch_update.call_args.args[0]
         assert len(updates) == len(fields) - 1
@@ -49,7 +47,7 @@ def run_checks():
 
         # New profile: preserve header order, ID text, blanks, and literal input.
         worksheet.col_values.return_value = ["student_id"]
-        assert data_manager.sync_profile_to_sheets(profile)[0]
+        assert db.sync_profile_to_sheets(profile)[0]
         args, kwargs = worksheet.append_row.call_args
         assert args[0][headers.index("student_id")] == "0123456"
         assert args[0][headers.index("bio")] == ""
@@ -61,49 +59,44 @@ def run_checks():
         # Ambiguous IDs or a mismatched schema must not write anything.
         worksheet.reset_mock()
         worksheet.col_values.return_value = ["student_id", "0123456", "0123456"]
-        assert not data_manager.sync_profile_to_sheets(profile)[0]
+        assert not db.sync_profile_to_sheets(profile)[0]
         worksheet.row_values.return_value = ["student_id", "name"]
-        assert not data_manager.sync_profile_to_sheets(profile)[0]
+        assert not db.sync_profile_to_sheets(profile)[0]
         worksheet.batch_update.assert_not_called()
         worksheet.append_row.assert_not_called()
 
         # Authentication/network failures return a safe error rather than crash.
+        db._spreadsheet = None
         api.service_account.side_effect = RuntimeError("sensitive response")
-        ok, message = data_manager.sync_profile_to_sheets(profile)
+        ok, message = db.sync_profile_to_sheets(profile)
         assert not ok and "sensitive response" not in message
 
     with patch.object(Path, "is_file", return_value=False):
-        assert not data_manager.sync_profile_to_sheets(profile)[0]
+        assert not db.sync_profile_to_sheets(profile)[0]
 
-    # Old local profiles keep their description under the new bio field.
-    with tempfile.TemporaryDirectory() as folder:
-        path = str(Path(folder) / "profiles.json")
-        assert data_manager.save_profiles(path, [{"student_id": "0123456", "description": "Old bio"}])
-        assert data_manager.load_profiles(path)[0]["bio"] == "Old bio"
+    # CLI read failures stop setup, rather than treating the user as missing.
+    with patch.object(db, "load_profile", side_effect=RuntimeError("offline")), patch.object(
+        io_manager, "ask_field", return_value="0123456"
+    ), patch.object(io_manager, "show"), patch.object(io_manager, "show_error") as error, patch.object(
+        io_manager, "collect_profile"
+    ) as collect:
+        main.run_profile_setup()
+        error.assert_called_once()
+        collect.assert_not_called()
 
-        # A failed sync must leave the successful local save intact.
-        with patch.object(main, "DATA_PATH", path), patch.object(io_manager, "ask_field", return_value="0123456"), patch.object(
-            io_manager, "confirm", return_value=True
-        ), patch.object(io_manager, "collect_profile", return_value=profile.copy()), patch.object(
-            io_manager, "show_profile_summary"
-        ), patch.object(io_manager, "show"), patch.object(io_manager, "show_error"), patch.object(
-            main.logic_manager, "derive_profile_traits", return_value={}
-        ), patch.object(data_manager, "sync_profile_to_sheets", return_value=(False, "Offline")) as sync:
-            main.run_profile_setup()
-            sync.assert_called_once()
-            saved = json.loads(Path(path).read_text(encoding="utf-8"))
-            assert saved[0]["student_id"] == "0123456"
-
-        # Failed local persistence must not trigger a remote write.
-        with patch.object(main, "DATA_PATH", path), patch.object(io_manager, "ask_field", return_value="0123456"), patch.object(
-            io_manager, "confirm", return_value=True
-        ), patch.object(io_manager, "collect_profile", return_value=profile.copy()), patch.object(
-            io_manager, "show_profile_summary"
-        ), patch.object(io_manager, "show"), patch.object(main.logic_manager, "derive_profile_traits", return_value={}), patch.object(
-            data_manager, "save_profiles", return_value=False
-        ), patch.object(data_manager, "sync_profile_to_sheets") as sync:
-            main.run_profile_setup()
-            sync.assert_not_called()
+    # No success message is displayed for a failed spreadsheet write.
+    with patch.object(db, "load_profile", return_value=None), patch.object(
+        io_manager, "ask_field", return_value="0123456"
+    ), patch.object(io_manager, "confirm", return_value=True), patch.object(
+        io_manager, "collect_profile", return_value=profile.copy()
+    ), patch.object(io_manager, "show_profile_summary"), patch.object(io_manager, "show") as show, patch.object(
+        io_manager, "show_error"
+    ) as error, patch.object(main.logic_manager, "derive_profile_traits", return_value={}), patch.object(
+        db, "sync_profile_to_sheets", return_value=(False, "Offline")
+    ):
+        main.run_profile_setup()
+        error.assert_called_once_with("Offline")
+        assert all(call.args[0] != "Profile saved." for call in show.call_args_list)
 
 
 if __name__ == "__main__":

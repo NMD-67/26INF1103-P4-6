@@ -17,7 +17,8 @@ auth = ModuleType("src.auth")
 auth.login_user = AsyncMock()
 auth.validate_otp = Mock()
 auth.get_user_info = Mock()
-auth.edit_user_info = Mock(return_value={"success": True})
+save_profile = Mock(return_value={"saved": True})
+db.save_profile = save_profile
 dotenv = ModuleType("dotenv")
 dotenv.load_dotenv = Mock()
 with patch.dict(sys.modules, {"database.db": db, "src.auth": auth, "dotenv": dotenv}):
@@ -43,46 +44,46 @@ async def run_checks():
     }
     assert set(invalid) == set(bot.USER_PROFILE_HANDLERS)
     for key, text in invalid.items():
-        auth.edit_user_info.reset_mock()
+        save_profile.reset_mock()
         update, context = fixture(key, text)
         await bot.text_handler(update, context)
-        auth.edit_user_info.assert_not_called()
+        save_profile.assert_not_called()
         assert context.user_data["editing_field"] == "edit_" + key
         assert "Please try again" in update.message.reply_text.call_args.args[0]
 
     # Range checking, required blanks, canonical values, and list serialization.
     for key, text in [("birthday", "01/01/2099"), ("name", " ")]:
-        auth.edit_user_info.reset_mock()
+        save_profile.reset_mock()
         update, context = fixture(key, text)
         await bot.text_handler(update, context)
-        auth.edit_user_info.assert_not_called()
+        save_profile.assert_not_called()
     for key, text, expected in [
         ("mbti", "intj", "INTJ"), ("course", "3", "Applied Artificial Intelligence"),
-        ("hobbies", "Reading, reading, Swimming", "Reading, Swimming"),
-        ("ccas", "Music, music", "Music"), ("gender", "female", "Female"),
-        ("bio", " ", ""), ("telegram_handle", "example_user", "@example_user"),
+        ("hobbies", "Reading, reading, Swimming", ["Reading", "Swimming"]),
+        ("ccas", "Music, music", ["Music"]), ("gender", "female", "Female"),
+        ("bio", " ", None), ("telegram_handle", "example_user", "@example_user"),
     ]:
-        auth.edit_user_info.reset_mock()
+        save_profile.reset_mock()
         update, context = fixture(key, text)
         await bot.text_handler(update, context)
-        auth.edit_user_info.assert_called_once_with("0123456", {key: expected})
+        save_profile.assert_called_once_with({"student_id": "0123456", key: expected}, partial=True)
         assert "editing_field" not in context.user_data
 
     # Required fields retain the edit after a failure; auth is rechecked before writes.
     update, context = fixture("name", "Test Student")
     db.get_bot_user.return_value = None
-    auth.edit_user_info.reset_mock()
+    save_profile.reset_mock()
     await bot.text_handler(update, context)
-    auth.edit_user_info.assert_not_called()
+    save_profile.assert_not_called()
     db.get_bot_user.return_value = {"student_id": "0123456"}
-    auth.edit_user_info.return_value = {"success": False}
+    save_profile.return_value = {"saved": False, "message": "Failed"}
     update, context = fixture("name", "Test Student")
     await bot.text_handler(update, context)
     assert context.user_data["editing_field"] == "edit_name"
-    auth.edit_user_info.side_effect = RuntimeError("Unavailable")
+    save_profile.side_effect = RuntimeError("Unavailable")
     await bot.text_handler(update, context)
     assert context.user_data["editing_field"] == "edit_name"
-    auth.edit_user_info.side_effect = None
+    save_profile.side_effect = None
 
     # Edit prompts are sourced from the schema and expose numbered course choices.
     update, context = fixture("course", "")
@@ -92,7 +93,7 @@ async def run_checks():
     assert "Which course are you studying?" in update.message.reply_text.call_args.args[0]
     assert "reply_markup" not in update.message.reply_text.call_args.kwargs
 
-    auth.edit_user_info.return_value = {"success": True}
+    save_profile.return_value = {"saved": True}
     # Exercise real callback shapes: Telegram callbacks have no update.message.
     for key, expected in [("gender", "Male"), ("year", "1"), ("religion", "Buddhism"),
                           ("mbti", "INTJ"), ("match_preference", "Male"), ("here_for", "Friends")]:
@@ -107,22 +108,23 @@ async def run_checks():
         if key == "here_for":
             assert "Relationships and Friends" in [button.text for row in menu.inline_keyboard for button in row]
         update.callback_query.data = menu.inline_keyboard[0][0].callback_data
-        auth.edit_user_info.reset_mock()
+        save_profile.reset_mock()
         await bot.edit_option_handler(update, context)
-        auth.edit_user_info.assert_called_once_with("0123456", {key: expected})
+        save_profile.assert_called_once_with({"student_id": "0123456", key: expected}, partial=True)
         assert "editing_field" not in context.user_data
         await bot.edit_option_handler(update, context)
-        assert auth.edit_user_info.call_count == 1, "Repeated taps must not write again"
+        assert save_profile.call_count == 1, "Repeated taps must not write again"
 
     # An old menu for the same field cannot overwrite a later edit session.
     update, context = fixture("gender", "")
     context.user_data["editing_token"] = "newsession"
     update.callback_query = SimpleNamespace(data="editpick:oldsession:gender:0", answer=AsyncMock())
-    auth.edit_user_info.reset_mock()
+    save_profile.reset_mock()
     await bot.edit_option_handler(update, context)
-    auth.edit_user_info.assert_not_called()
+    save_profile.assert_not_called()
 
 
 if __name__ == "__main__":
-    asyncio.run(run_checks())
+    with patch.object(bot.db, "save_profile", save_profile):
+        asyncio.run(run_checks())
     io_manager.show("Telegram edit checks passed (no credentials or live services used).")

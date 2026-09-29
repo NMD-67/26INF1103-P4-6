@@ -1,8 +1,6 @@
 """Offline Telegram form checks: py tests/test_telegram_setup.py."""
 import asyncio
-import json
 import sys
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -38,7 +36,7 @@ async def run_checks():
         assert context.user_data[form.STATE_KEY]["index"] == 1
 
         # Incomplete drafts must never save or contact the sync service.
-        with patch.object(form.data_manager, "sync_profile_to_sheets") as sync:
+        with patch.object(form.db, "sync_profile_to_sheets") as sync:
             await form.save(update, context)
             sync.assert_not_called()
 
@@ -70,25 +68,18 @@ async def run_checks():
         await form.cancel(update, second_context)
         assert form.STATE_KEY not in second_context.user_data
 
-        with tempfile.TemporaryDirectory() as folder, patch.object(form, "DATA_PATH", str(Path(folder) / "profiles.json")):
-            form.data_manager.save_profiles(form.DATA_PATH, [{"student_id": "0123456", "insta_handle": "keep_me"}])
-            with patch.object(form, "student_id_for", new=AsyncMock(return_value="9999999")), patch.object(form.data_manager, "sync_profile_to_sheets") as sync:
-                await form.save(update, context)
-                sync.assert_not_called()
-            with patch.object(form.data_manager, "save_profiles", return_value=False), patch.object(form.data_manager, "sync_profile_to_sheets") as sync:
-                await form.save(update, context)
-                sync.assert_not_called()
-                assert form.STATE_KEY in context.user_data
-            with patch.object(form.data_manager, "sync_profile_to_sheets", return_value=(False, "Offline")):
-                await form.save(update, context)
-                assert form.STATE_KEY in context.user_data
-                records = json.loads(Path(form.DATA_PATH).read_text(encoding="utf-8"))
-                assert records[0]["hobbies"] == ["Reading", "Swimming"]
-                assert records[0]["insta_handle"] == "keep_me"
-            with patch.object(form.data_manager, "sync_profile_to_sheets", return_value=(True, "Synced")) as sync:
-                await form.save(update, context)
-                sync.assert_called_once()
-                assert form.STATE_KEY not in context.user_data
+        with patch.object(form, "student_id_for", new=AsyncMock(return_value="9999999")), patch.object(form.db, "sync_profile_to_sheets") as sync:
+            await form.save(update, context)
+            sync.assert_not_called()
+        with patch.object(form.db, "sync_profile_to_sheets", return_value=(False, "Offline")):
+            await form.save(update, context)
+            assert form.STATE_KEY in context.user_data
+            assert context.user_data[form.STATE_KEY]["profile"] == draft
+            assert "retry" in update.effective_message.reply_text.call_args.args[0]
+        with patch.object(form.db, "sync_profile_to_sheets", return_value=(True, "Saved")) as sync:
+            await form.save(update, context)
+            sync.assert_called_once_with(draft, partial=False)
+            assert form.STATE_KEY not in context.user_data
 
 
 if __name__ == "__main__":

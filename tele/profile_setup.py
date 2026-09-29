@@ -1,17 +1,47 @@
 """Telegram adapter for the shared profile form. No API calls at import time."""
 import asyncio
-import os
 import secrets
-from pathlib import Path
 
-import data_manager
+from database import db
 import io_manager
 import logic_manager
 from profile_schema import PROFILE_FIELDS
 
 STATE_KEY = "profile_setup"
 OPTIONS_PER_PAGE = 8
-DATA_PATH = os.environ.get("SITOGETHER_DATA", str(Path(__file__).resolve().parents[1] / "data" / "profiles.json"))
+
+
+def uses_buttons(field):
+    if field["key"] == "course":
+        return False
+    return field["kind"] in ("choice", "mbti")
+
+
+def question_lines(field):
+    lines = [field["question"]]
+    if field.get("hint"):
+        lines.append(field["hint"])
+    if field["key"] == "course":
+        for number, option in enumerate(field["options"], start=1):
+            lines.append(f"{number}. {option}")
+        lines.append(f"Reply with the course number (1-{len(field['options'])}).")
+    return lines
+
+
+def option_rows(field, prefix, width=2, start=0, stop=None):
+    """Build rows with original option indices, including paginated choices."""
+    from telegram import InlineKeyboardButton
+    options = field["options"]
+    if stop is None:
+        stop = len(options)
+    buttons = []
+    for index in range(start, min(stop, len(options))):
+        label = io_manager.profile_value(field["key"], options[index])
+        buttons.append(InlineKeyboardButton(label, callback_data=f"{prefix}:{index}"))
+    rows = []
+    for index in range(0, len(buttons), width):
+        rows.append(buttons[index:index + width])
+    return rows
 
 
 async def reply(update, text):
@@ -30,7 +60,9 @@ async def private_chat(update):
 async def student_id_for(update):
     from database.db import get_bot_user
     user = await asyncio.to_thread(get_bot_user, update.effective_user.id)
-    return str(user["student_id"]) if user else None
+    if user is None:
+        return None
+    return str(user["student_id"])
 
 
 async def setup(update, context):
@@ -45,8 +77,12 @@ async def setup(update, context):
         await reply(update, "Log in first using /login <student_id>, then verify your /otp.")
         return
     context.user_data.pop("editing_field", None)
-    context.user_data[STATE_KEY] = {"profile": {"student_id": student_id}, "index": 1,
-                                   "session": secrets.token_hex(4)}
+    # Telegram keeps a separate user_data dictionary for each person.
+    context.user_data[STATE_KEY] = {
+        "profile": {"student_id": student_id},
+        "index": 1,  # Student ID is already known, so begin with the name question.
+        "session": secrets.token_hex(4),  # Identifies buttons from this setup attempt.
+    }
     await reply(update, "Profile setup: send one answer at a time. /skip skips optional questions; /cancel discards this draft. Saving will replace your profile fields; unrelated fields are kept.")
     await prompt_next(update, context)
 
@@ -56,11 +92,12 @@ def option_menu(state, field, page=0):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     prefix = f"form:{state['session']}:{state['index']}"
     options = field["options"]
-    buttons = [InlineKeyboardButton(io_manager.profile_value(field["key"], option), callback_data=f"{prefix}:pick:{i}")
-               for i, option in enumerate(options)
-               if page * OPTIONS_PER_PAGE <= i < (page + 1) * OPTIONS_PER_PAGE]
-    width = 1 if field["key"] == "course" else 2
-    rows = [buttons[i:i + width] for i in range(0, len(buttons), width)]
+    width = 2
+    if field["key"] == "course":
+        width = 1
+    first_option = page * OPTIONS_PER_PAGE
+    last_option = first_option + OPTIONS_PER_PAGE
+    rows = option_rows(field, f"{prefix}:pick", width, first_option, last_option)
     navigation = []
     if page:
         navigation.append(InlineKeyboardButton("Previous", callback_data=f"{prefix}:page:{page - 1}"))
@@ -79,7 +116,10 @@ async def prompt_next(update, context, page=0, edit_menu=False):
         field = PROFILE_FIELDS[state["index"]]
         if not logic_manager.should_skip_field(state["profile"], field):
             break
-        state["profile"][field["key"]] = [] if field["kind"] == "list" else None
+        if field["kind"] == "list":
+            state["profile"][field["key"]] = []
+        else:
+            state["profile"][field["key"]] = None
         state["index"] += 1
     if state["index"] == len(PROFILE_FIELDS):
         profile = state["profile"]
@@ -92,15 +132,8 @@ async def prompt_next(update, context, page=0, edit_menu=False):
         lines.append("Send /save to save, /setup to start again, or /cancel to discard.")
         await reply(update, "\n".join(lines))
         return
-    lines = [field["question"]]
-    if field.get("hint"):
-        lines.append(field["hint"])
-    if field["key"] == "course":
-        lines.extend(f"{number}. {option}" for number, option in enumerate(field["options"], 1))
-        lines.append(f"Reply with the course number (1-{len(field['options'])}).")
-        await reply(update, "\n".join(lines))
-        return
-    if field["kind"] in ("choice", "mbti"):
+    lines = question_lines(field)
+    if uses_buttons(field):
         lines.append("Tap an option below.")
         if len(field["options"]) > OPTIONS_PER_PAGE:
             pages = (len(field["options"]) + OPTIONS_PER_PAGE - 1) // OPTIONS_PER_PAGE
@@ -126,10 +159,17 @@ async def menu_choice(update, context):
     except (ValueError, AttributeError):
         await query.answer("This option is unavailable.")
         return
-    if (update.effective_chat.type != "private" or not state or prefix != "form"
-            or session != state.get("session") or index != state["index"]
-            or not 0 <= index < len(PROFILE_FIELDS)):
-        await query.answer("Use the latest question, or send /setup to start again.")
+    # Check the chat, then the draft, then the question. Old buttons must not
+    # answer a different question after the user has moved on.
+    unavailable = "Use the latest question, or send /setup to start again."
+    if update.effective_chat.type != "private" or not state:
+        await query.answer(unavailable)
+        return
+    if prefix != "form" or session != state.get("session"):
+        await query.answer(unavailable)
+        return
+    if index != state["index"] or not 0 <= index < len(PROFILE_FIELDS):
+        await query.answer(unavailable)
         return
     field = PROFILE_FIELDS[index]
     options = field.get("options", [])
@@ -165,7 +205,10 @@ async def answer(update, context, raw=None):
         await reply(update, "Your draft is ready. Send /save, /setup, or /cancel.")
         return
     field = PROFILE_FIELDS[state["index"]]
-    value, error = io_manager.validate_field(update.effective_message.text if raw is None else raw, field)
+    # A button supplies raw; a typed answer comes from the message text.
+    if raw is None:
+        raw = update.effective_message.text
+    value, error = io_manager.validate_field(raw, field)
     if error:
         await reply(update, error)
         return
@@ -200,17 +243,12 @@ async def save(update, context):
         await reply(update, "Your login changed. Please log in and start /setup again.")
         return
     profile = state["profile"]
-    profiles = data_manager.load_profiles(DATA_PATH)
-    existing = data_manager.find_profile(profiles, student_id) or {}
-    merged = {**existing, **profile}
-    if not data_manager.save_profiles(DATA_PATH, data_manager.upsert_profile(profiles, merged)):
-        await reply(update, "Save failed. Your draft is kept; retry /save.")
-        return
-    synced, message = await asyncio.to_thread(data_manager.sync_profile_to_sheets, merged)
-    if synced:
+    # Saving uses the network; to_thread lets the bot keep responding meanwhile.
+    result = await asyncio.to_thread(db.save_profile, profile)
+    if result["saved"]:
         await reply(update, "Profile saved.")
         context.user_data.pop(STATE_KEY, None)
         await reply(update, "Use /profile to view your saved profile.")
     else:
-        await reply(update, "Your profile was saved locally, but the online update failed. " + message)
-        await reply(update, "Your draft is kept. Send /save to retry syncing.")
+        await reply(update, result["message"])
+        await reply(update, "Your draft is kept in this running bot. Send /save to retry. It will be lost if the bot restarts.")

@@ -109,3 +109,132 @@ This file contans all the functions and modules for user handling. Note that as 
 |GetUserInfo | student_id `int` | Dict {<br>success: `bool`,<br> user: `dict`,<br> status: `int`, error: `str`<br>} | Return value will on have an error value if an error occured. |
 |UpdateUserInfo | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the update |
 |DeleteUser | student_id `int`| status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the deletion |
+
+
+## Profile CLI and Google Sheets sync
+
+Run from the repository root:
+
+```powershell
+py -m pip install -r requirements.txt
+py main.py
+```
+
+Profiles are stored only in the `users` tab of the SITogether spreadsheet.
+Place the Google service account credentials at `database/service_account.json`
+locally; never commit credentials. This credential file is still required and is
+not a profile database. The service account needs edit access to the sheet.
+
+Saving matches the exact `student_id` column and refuses duplicate IDs. It
+updates only form fields, preserving `insta_handle` and unrelated columns.
+Lists display as comma-separated text, with empty lists shown as blank cells.
+Derived traits and completeness are calculated when needed, not stored separately.
+There is no offline profile save or automatic retry. A connection failure is
+reported to the user; a failed request may require checking Sheets and retrying.
+
+The September 2026 header migration keeps `bio`, renames `expectation` to
+`expectations`, `cca` to `ccas`, `sit_event` to `events`, and `tele_handle` to
+`telegram_handle`. `sexual_orientation` is replaced by `match_preference`;
+existing users must re-enter Male, Female, or Both. Original profiles are in
+`users_backup_20260928_before_headers`. Keep other running bot copies aligned
+with these new headers.
+
+Run the offline sync regression checks without credentials or live API calls:
+
+```powershell
+py tests/test_profile_sync.py
+```
+
+These checks supplement, but do not replace, the assignment's AI business-rule tests.
+
+
+## Telegram profile setup
+
+Start the bot from the repository root (with dependencies installed):
+
+```powershell
+py -m tele.bot
+```
+
+The existing `.env` supplies `TELE_API_KEY` and `EMAIL_PASSWORD` for the bot
+and email login. The existing service-account file is required for Sheets.
+Run only one polling instance of this bot token; coordinate with the team
+before replacing an already-running instance.
+
+In a private Telegram chat:
+
+1. `/login <student_id>` and then `/otp <student_id> <otp>` verify the account.
+2. `/setup` collects the same profile fields as the CLI, using the verified ID.
+3. Reply with text or option numbers; `/skip` skips optional questions only.
+4. Review the summary and send `/save` to save to the `users` row in Sheets.
+5. `/profile` displays the saved sheet profile. Its setup button restarts the full form.
+
+`/cancel` discards an unsaved draft; `/setup` starts it again. Nothing is
+written until `/save`. If saving to Sheets fails, the draft stays in the running
+bot and `/save` can retry. Drafts exist only in memory and are lost on bot restart. Existing
+single-field editing remains available; finish or cancel setup before using it.
+
+Offline Telegram tests (no real email, Telegram messages or Sheets writes):
+
+```powershell
+py tests/test_telegram_setup.py
+py tests/test_profile_sync.py
+```
+
+The Dockerfile includes the shared profile modules used by the bot. The live
+Telegram/OTP flow and Docker build still require verification in the team's
+runtime; offline tests do not contact these external services.
+
+
+### Shared profile saving
+
+`database.db.save_profile()` is the common saving entry point for terminal
+setup, Telegram setup, and individual edits. All profile storage functions
+and the Google Sheets connection now live in `database/db.py`. `partial=True` updates only the edited
+fields; the default saves the complete profile. The result contains `saved`
+and `message`. A failed save keeps the Telegram draft/edit active for retry.
+No local profile file is read, written, or recreated.
+
+`database.db.load_profile()` reads a profile from Sheets and converts list
+cells into Python lists. It calculates traits in memory. `database/db.py` also
+keeps the existing OTP and Telegram-account-link operations. It connects on
+first use, using `SITOGETHER_SPREADSHEET_ID` or the project default.
+
+### Reading the profile code
+
+Start with `profile_schema.py` for questions and `main.py` for the terminal flow.
+The Telegram code uses `tele/bot.py` for commands and editing, and
+`tele/profile_setup.py` for setup and shared question/button functions.
+Courses use typed numbered answers. Each user's `context.user_data` holds the
+current draft or edit in memory. Session tokens reject old buttons.
+
+Run all offline checks with:
+
+```powershell
+py tests/test_profile_sync.py
+py tests/test_shared_saving.py
+py tests/test_telegram_setup.py
+py tests/test_telegram_menus.py
+py tests/test_telegram_edits.py
+```
+
+This Sheets-only design does not implement the assignment's local CSV/JSON
+storage requirement. The team needs to resolve that requirement for submission.
+
+
+### Storage backend boundary
+
+The CLI and Telegram profile flows call `database.db.load_profile(student_id)`
+and `database.db.save_profile(profile, partial=False)`. Login continues to use
+the existing user, OTP, and Telegram-link functions in the same module.
+
+To replace Sheets with MongoDB, replace the storage implementation in `db.py`
+and keep these public function signatures, returned dictionary keys/status
+codes, and field types compatible. Full setup creates or updates a profile;
+partial edits update only supplied fields and must not create missing users.
+The CLI and Telegram callers should then need no storage-specific changes.
+MongoDB still requires its driver in `requirements.txt`, connection settings,
+database setup and any data migration. This project still uses Sheets today.
+
+`data_manager.py` has been removed by project decision. Along with local file
+storage removal, this departs from the assignment's stated module requirements.

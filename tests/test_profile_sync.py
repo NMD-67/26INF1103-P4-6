@@ -75,7 +75,7 @@ def run_checks():
         assert not db.sync_profile_to_sheets(profile)[0]
 
     # CLI read failures stop setup, rather than treating the user as missing.
-    with patch.object(db, "load_profile", side_effect=RuntimeError("offline")), patch.object(
+    with patch.object(db, "get_profile", side_effect=RuntimeError("offline")), patch.object(
         io_manager, "ask_field", return_value="0123456"
     ), patch.object(io_manager, "show"), patch.object(io_manager, "show_error") as error, patch.object(
         io_manager, "collect_profile"
@@ -85,7 +85,7 @@ def run_checks():
         collect.assert_not_called()
 
     # No success message is displayed for a failed spreadsheet write.
-    with patch.object(db, "load_profile", return_value=None), patch.object(
+    with patch.object(db, "get_profile", return_value=None), patch.object(
         io_manager, "ask_field", return_value="0123456"
     ), patch.object(io_manager, "confirm", return_value=True), patch.object(
         io_manager, "collect_profile", return_value=profile.copy()

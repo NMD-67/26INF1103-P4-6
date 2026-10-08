@@ -47,7 +47,6 @@ def get_groq_client():
     return Groq(api_key=os.getenv("PROFILE_MATCHING_API_KEY"))
 
 def get_spreadsheet(gc):
-    """Open the spreadsheet by URL (gc.open() needs a title, not a URL)."""
     return gc.open_by_url(SPREADSHEET_URL)
 
 # ---------------------------------------------------------------------
@@ -190,3 +189,20 @@ def Add_To_Database(User_ID, results, gc):
         new_row[headers.index("student_id")] = User_ID
         new_row[recco_col_index - 1] = combined_value
         matches_sheet.append_row(new_row)
+
+# ---------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------
+ 
+if __name__ == "__main__":
+    USER_ID = 1001  # <-- set the main user to match
+ 
+    gc = get_sheets_client()
+    groq_client = get_groq_client()
+ 
+    results = AI_Profile_Matching(USER_ID, gc, groq_client)
+    Add_To_Database(USER_ID, results, gc)
+ 
+    # For inspection only - not written to the sheet
+    name_score = {r["name"]: r["score"] for r in results}
+    print(name_score)

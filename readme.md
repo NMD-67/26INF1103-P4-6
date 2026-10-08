@@ -110,7 +110,6 @@ This file contans all the functions and modules for user handling. Note that as 
 |UpdateUserInfo | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the update |
 |DeleteUser | student_id `int`| status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the deletion |
 
-
 ## Profile CLI and Google Sheets sync
 
 Run from the repository root:
@@ -146,7 +145,6 @@ py tests/test_profile_sync.py
 ```
 
 These checks supplement, but do not replace, the assignment's AI business-rule tests.
-
 
 ## Telegram profile setup
 
@@ -185,7 +183,6 @@ The Dockerfile includes the shared profile modules used by the bot. The live
 Telegram/OTP flow and Docker build still require verification in the team's
 runtime; offline tests do not contact these external services.
 
-
 ### Shared profile saving
 
 `database.db.save_profile()` is the common saving entry point for terminal
@@ -195,7 +192,7 @@ fields; the default saves the complete profile. The result contains `saved`
 and `message`. A failed save keeps the Telegram draft/edit active for retry.
 No local profile file is read, written, or recreated.
 
-`database.db.load_profile()` reads a profile from Sheets and converts list
+`database.db.get_profile()` reads a profile from Sheets and converts list
 cells into Python lists. It calculates traits in memory. `database/db.py` also
 keeps the existing OTP and Telegram-account-link operations. It connects on
 first use, using `SITOGETHER_SPREADSHEET_ID` or the project default.
@@ -221,10 +218,9 @@ py tests/test_telegram_edits.py
 This Sheets-only design does not implement the assignment's local CSV/JSON
 storage requirement. The team needs to resolve that requirement for submission.
 
-
 ### Storage backend boundary
 
-The CLI and Telegram profile flows call `database.db.load_profile(student_id)`
+The CLI and Telegram profile flows call `database.db.get_profile(student_id)`
 and `database.db.save_profile(profile, partial=False)`. Login continues to use
 the existing user, OTP, and Telegram-link functions in the same module.
 

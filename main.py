@@ -19,7 +19,7 @@ def run_profile_setup() -> None:
 
     student_id = io_manager.ask_field(get_field("student_id"))
     try:
-        existing = db.load_profile(student_id)
+        existing = db.get_profile(student_id)
     except Exception:
         io_manager.show_error("Could not read your profile. Check your connection and try again.")
         return

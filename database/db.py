@@ -9,8 +9,8 @@ from pathlib import Path
 
 import gspread
 import traceback
-# import logic_manager
-# from profile_schema import PROFILE_FIELDS
+import logic_manager
+from profile_schema import PROFILE_FIELDS
 
 logger = logging.getLogger(__name__)
 SERVICE_ACCOUNT_FILE = Path(__file__).resolve().parent / "service_account.json"
@@ -721,7 +721,7 @@ def add_to_rejected_student_id(student_id: str, new_students: list):
         return 500
 
 #print(add_to_accepted_student_id("1009", ["7654321", "9876543"]))
-print(remove_from_accepted_student_id("1009", ["7654321"]))
-print(get_rejected_student_id("1009"))
-print(get_accepted_student_id("1009"))
-print(add_to_rejected_student_id("1009", ["7654321", "9876543"]))
+# print(remove_from_accepted_student_id("1009", ["7654321"]))
+# print(get_rejected_student_id("1009"))
+# print(get_accepted_student_id("1009"))
+# print(add_to_rejected_student_id("1009", ["7654321", "9876543"]))

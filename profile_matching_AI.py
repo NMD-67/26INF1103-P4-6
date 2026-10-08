@@ -23,10 +23,21 @@ from google.oauth2.service_account import Credentials
 from groq import Groq
 
 # Set Up Spreadsheet
-SPREADSHEET_NAME = "https://docs.google.com/spreadsheets/d/1N_2QPdtVigDzzmyjlyUB_AIdLArnxbScmLbq0s2UCdU/edit?usp=sharing"
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1N_2QPdtVigDzzmyjlyUB_AIdLArnxbScmLbq0s2UCdU/edit?usp=sharing"
 PROFILES_TAB = "users"
 MATCHES_TAB = "matches"
+ 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+FIELDS_FOR_AI = [
+    "birthday", "gender", "course", "bio", "religion", "mbti",
+    "match_preference", "here_for", "expectations", "ccas",
+    "events", "hobbies", "interest_groups"
+]
+
+def filter_profile_fields(profile):
+    """Keep only the allowlisted fields before sending a profile to the AI."""
+    return {field: profile.get(field, "") for field in FIELDS_FOR_AI}
 
 def get_sheets_client():
     creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
@@ -34,6 +45,10 @@ def get_sheets_client():
  
 def get_groq_client():
     return Groq(api_key=os.getenv("PROFILE_MATCHING_API_KEY"))
+
+def get_spreadsheet(gc):
+    """Open the spreadsheet by URL (gc.open() needs a title, not a URL)."""
+    return gc.open_by_url(SPREADSHEET_URL)
 
 # ---------------------------------------------------------------------
 # Step 1: Retrieve profiles
@@ -45,7 +60,7 @@ def Retrieve_Profiles(User_ID, all_profiles):
     candidate_profiles = []
  
     for profile in all_profiles:
-        if profile["User_ID"] == User_ID:
+        if str(profile["student_id"]) == str(User_ID):
             main_profile = profile
         else:
             candidate_profiles.append(profile)
@@ -69,8 +84,8 @@ def get_compatibility_score(client, main_profile, candidate_profile):
     )
  
     payload = {
-        "profile_a": main_profile,
-        "profile_b": candidate_profile
+        "profile_a": filter_profile_fields(main_profile),
+        "profile_b": filter_profile_fields(candidate_profile)
     }
  
     try:
@@ -94,18 +109,19 @@ def get_compatibility_score(client, main_profile, candidate_profile):
         return int(score)
  
     except (json.JSONDecodeError, KeyError, ValueError) as e:
-        print(f"Validation failed for candidate {candidate_profile.get('User_ID')}: {e}")
+        print(f"Validation failed for candidate {candidate_profile.get('student_id')}: {e}")
         return None
     except Exception as e:
-        print(f"API call failed for candidate {candidate_profile.get('User_ID')}: {e}")
+        print(f"API call failed for candidate {candidate_profile.get('student_id')}: {e}")
         return None
- 
+
  # ---------------------------------------------------------------------
 # Step 3: Main workflow - score the main user against every candidate
 # ---------------------------------------------------------------------
  
 def AI_Profile_Matching(User_ID, gc, groq_client):
-    sheet = gc.open(SPREADSHEET_NAME).worksheet(PROFILES_TAB)
+    spreadsheet = get_spreadsheet(gc)
+    sheet = spreadsheet.worksheet(PROFILES_TAB)
     all_profiles = sheet.get_all_records()
  
     main_profile, candidates = Retrieve_Profiles(User_ID, all_profiles)
@@ -119,8 +135,8 @@ def AI_Profile_Matching(User_ID, gc, groq_client):
         score = get_compatibility_score(groq_client, main_profile, candidate)
         if score is not None:
             results.append({
-                "user_id": candidate["User_ID"],
-                "name": candidate["Name"],
+                "user_id": candidate["student_id"],
+                "name": candidate["name"],
                 "score": score
             })
  
@@ -132,31 +148,45 @@ def AI_Profile_Matching(User_ID, gc, groq_client):
 # ---------------------------------------------------------------------
  
 def Add_To_Database(User_ID, results, gc):
-    results_sheet = gc.open(SPREADSHEET_NAME).worksheet(MATCHES_TAB)
-    existing = results_sheet.get_all_records()
+    spreadsheet = get_spreadsheet(gc)
+    matches_sheet = spreadsheet.worksheet(MATCHES_TAB)
+    all_rows = matches_sheet.get_all_records()
+    headers = matches_sheet.row_values(1)
  
-    # Keep rows belonging to other users, drop this user's old rows
-    rows_to_keep = [row for row in existing if row["Main_User_ID"] != User_ID]
+    recco_col_index = headers.index("recco_student_id") + 1  # 1-based for gspread
  
-    new_rows = [
-        {
-            "Main_User_ID": User_ID,
-            "Matched_User_ID": r["user_id"],
-            "Matched_Name": r["name"],
-            "Score": r["score"]
-        }
-        for r in results
-    ]
+    new_reccos = [{"id": r["user_id"], "score": r["score"]} for r in results]
  
-    all_rows = rows_to_keep + new_rows
+    # Find the row for this student_id (data starts at row 2)
+    row_number = None
+    existing_recco_raw = ""
+    for i, row in enumerate(all_rows, start=2):
+        if str(row["student_id"]) == str(User_ID):
+            row_number = i
+            existing_recco_raw = str(row.get("recco_student_id", "") or "")
+            break
  
-    results_sheet.clear()
-    results_sheet.append_row(["Main_User_ID", "Matched_User_ID", "Matched_Name", "Score"])
-    for row in all_rows:
-        results_sheet.append_row([
-            row["Main_User_ID"],
-            row["Matched_User_ID"],
-            row["Matched_Name"],
-            row["Score"]
-        ])
+    # Parse existing JSON, falling back to an empty list if blank/invalid
+    try:
+        existing_reccos = json.loads(existing_recco_raw) if existing_recco_raw else []
+        if not isinstance(existing_reccos, list):
+            existing_reccos = []
+    except json.JSONDecodeError:
+        print(f"Warning: could not parse existing recco_student_id for student {User_ID}, overwriting")
+        existing_reccos = []
  
+    existing_ids = {entry.get("id") for entry in existing_reccos}
+ 
+    # Append only new ids, avoid duplicates, keep existing scores as-is
+    combined_reccos = existing_reccos + [r for r in new_reccos if r["id"] not in existing_ids]
+    combined_value = json.dumps(combined_reccos)
+ 
+    if row_number is not None:
+        # Row exists - update only the recco_student_id cell
+        matches_sheet.update_cell(row_number, recco_col_index, combined_value)
+    else:
+        # No row yet for this student - create one, leaving accepted/rejected blank
+        new_row = [""] * len(headers)
+        new_row[headers.index("student_id")] = User_ID
+        new_row[recco_col_index - 1] = combined_value
+        matches_sheet.append_row(new_row)

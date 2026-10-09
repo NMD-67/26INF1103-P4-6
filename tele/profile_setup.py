@@ -8,7 +8,6 @@ import logic_manager
 from profile_schema import PROFILE_FIELDS
 
 STATE_KEY = "profile_setup"
-OPTIONS_PER_PAGE = 8
 
 
 def uses_buttons(field):
@@ -28,14 +27,12 @@ def question_lines(field):
     return lines
 
 
-def option_rows(field, prefix, width=2, start=0, stop=None):
-    """Build rows with original option indices, including paginated choices."""
+def option_rows(field, prefix, width=2):
+    """Build rows containing every option."""
     from telegram import InlineKeyboardButton
     options = field["options"]
-    if stop is None:
-        stop = len(options)
     buttons = []
-    for index in range(start, min(stop, len(options))):
+    for index in range(len(options)):
         label = io_manager.profile_value(field["key"], options[index])
         buttons.append(InlineKeyboardButton(label, callback_data=f"{prefix}:{index}"))
     rows = []
@@ -50,13 +47,6 @@ async def reply(update, text):
         await update.effective_message.reply_text(text[offset:offset + 3500])
 
 
-async def private_chat(update):
-    if update.effective_chat.type != "private":
-        await reply(update, "Please complete profile setup in a private chat with this bot.")
-        return False
-    return True
-
-
 async def student_id_for(update):
     from database.db import get_bot_user
     user = await asyncio.to_thread(get_bot_user, update.effective_user.id)
@@ -66,8 +56,6 @@ async def student_id_for(update):
 
 
 async def setup(update, context):
-    if not await private_chat(update):
-        return
     try:
         student_id = await student_id_for(update)
     except Exception:
@@ -87,30 +75,17 @@ async def setup(update, context):
     await prompt_next(update, context)
 
 
-def option_menu(state, field, page=0):
+def option_menu(state, field):
     """Keep callback payloads short and tied to one draft/question."""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     prefix = f"form:{state['session']}:{state['index']}"
-    options = field["options"]
-    width = 2
-    if field["key"] == "course":
-        width = 1
-    first_option = page * OPTIONS_PER_PAGE
-    last_option = first_option + OPTIONS_PER_PAGE
-    rows = option_rows(field, f"{prefix}:pick", width, first_option, last_option)
-    navigation = []
-    if page:
-        navigation.append(InlineKeyboardButton("Previous", callback_data=f"{prefix}:page:{page - 1}"))
-    if (page + 1) * OPTIONS_PER_PAGE < len(options):
-        navigation.append(InlineKeyboardButton("Next", callback_data=f"{prefix}:page:{page + 1}"))
-    if navigation:
-        rows.append(navigation)
+    rows = option_rows(field, f"{prefix}:pick")
     if not field["required"]:
         rows.append([InlineKeyboardButton("Skip", callback_data=f"{prefix}:skip:0")])
     return InlineKeyboardMarkup(rows)
 
 
-async def prompt_next(update, context, page=0, edit_menu=False):
+async def prompt_next(update, context):
     state = context.user_data[STATE_KEY]
     while state["index"] < len(PROFILE_FIELDS):
         field = PROFILE_FIELDS[state["index"]]
@@ -134,15 +109,10 @@ async def prompt_next(update, context, page=0, edit_menu=False):
         return
     lines = question_lines(field)
     if uses_buttons(field):
-        lines.append("Tap an option below.")
-        if len(field["options"]) > OPTIONS_PER_PAGE:
-            pages = (len(field["options"]) + OPTIONS_PER_PAGE - 1) // OPTIONS_PER_PAGE
-            lines.append(f"Page {page + 1} of {pages}")
-        menu = option_menu(state, field, page)
-        if edit_menu:
-            await update.callback_query.edit_message_text("\n".join(lines), reply_markup=menu)
-        else:
-            await update.effective_message.reply_text("\n".join(lines), reply_markup=menu)
+        if field["key"] != "gender":
+            lines.append("Tap an option below.")
+        menu = option_menu(state, field)
+        await update.effective_message.reply_text("\n".join(lines), reply_markup=menu)
         return
     if not field["required"]:
         lines.append("Optional: send /skip to leave blank.")
@@ -150,7 +120,7 @@ async def prompt_next(update, context, page=0, edit_menu=False):
 
 
 async def menu_choice(update, context):
-    """Handle choices, paging and optional skips; reject old draft buttons."""
+    """Handle choices and optional skips; reject old draft buttons."""
     query = update.callback_query
     state = context.user_data.get(STATE_KEY)
     try:
@@ -162,7 +132,7 @@ async def menu_choice(update, context):
     # Check the chat, then the draft, then the question. Old buttons must not
     # answer a different question after the user has moved on.
     unavailable = "Use the latest question, or send /setup to start again."
-    if update.effective_chat.type != "private" or not state:
+    if not state:
         await query.answer(unavailable)
         return
     if prefix != "form" or session != state.get("session"):
@@ -173,10 +143,6 @@ async def menu_choice(update, context):
         return
     field = PROFILE_FIELDS[index]
     options = field.get("options", [])
-    if action == "page" and 0 <= selection * OPTIONS_PER_PAGE < len(options):
-        await query.answer()
-        await prompt_next(update, context, page=selection, edit_menu=True)
-        return
     if action == "pick" and 0 <= selection < len(options):
         raw = options[selection]
     elif action == "skip" and not field["required"]:
@@ -195,8 +161,6 @@ async def menu_choice(update, context):
 
 
 async def answer(update, context, raw=None):
-    if not await private_chat(update):
-        return
     state = context.user_data.get(STATE_KEY)
     if not state:
         await reply(update, "Use /setup to begin your profile.")
@@ -228,8 +192,6 @@ async def cancel(update, context):
 
 
 async def save(update, context):
-    if not await private_chat(update):
-        return
     state = context.user_data.get(STATE_KEY)
     if not state or state["index"] != len(PROFILE_FIELDS):
         await reply(update, "Complete /setup before saving.")

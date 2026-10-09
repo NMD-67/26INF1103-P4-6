@@ -2,7 +2,7 @@
 
 No printing, no file access, no API calls.
 """
-from datetime import date, datetime
+from datetime import datetime
 
 PERSONALITIES = {
     "INTJ": "Architect", "INTP": "Logician", "ENTJ": "Commander", "ENTP": "Debater",
@@ -12,12 +12,12 @@ PERSONALITIES = {
 }
 
 
-def parse_birthday(text: str) -> date:
+def parse_birthday(text):
     """Convert a DD/MM/YYYY string to a date."""
     return datetime.strptime(text, "%d/%m/%Y").date()
 
 
-def should_skip_field(profile: dict, field: dict) -> bool:
+def should_skip_field(profile, field):
     """Return True if this field's skip_if condition is met by earlier answers."""
     condition = field.get("skip_if")
     if not condition:
@@ -25,27 +25,33 @@ def should_skip_field(profile: dict, field: dict) -> bool:
     return profile.get(condition["field"]) in condition["in"]
 
 
-def find_missing_fields(profile: dict, fields: list[dict]) -> list[dict]:
+def find_missing_fields(profile, fields):
     """Return required field definitions that are empty or absent in the profile,
     excluding any field whose skip_if condition is currently met."""
-    return [
-        f for f in fields
-        if f["required"] and not profile.get(f["key"]) and not should_skip_field(profile, f)
-    ]
+    missing = []
+    for field in fields:
+        if not field["required"]:
+            continue
+        if should_skip_field(profile, field):
+            continue
+        if not profile.get(field["key"]):
+            missing.append(field)
+    return missing
 
 
-def is_profile_complete(profile: dict, fields: list[dict]) -> bool:
+def is_profile_complete(profile, fields):
     """A profile is complete when no required field is missing."""
-    return not find_missing_fields(profile, fields)
+    missing = find_missing_fields(profile, fields)
+    return len(missing) == 0
 
 
-def get_personality_name(mbti: str | None) -> str | None:
+def get_personality_name(mbti):
     """Map an MBTI code to its 16 Personalities name (None if not given)."""
     if not mbti:
         return None
     return PERSONALITIES.get(mbti.upper())
 
 
-def derive_profile_traits(profile: dict) -> dict:
+def derive_profile_traits(profile):
     """Look up the personality name from the optional MBTI answer."""
     return {"personality_name": get_personality_name(profile.get("mbti"))}

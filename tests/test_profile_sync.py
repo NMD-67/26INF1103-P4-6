@@ -17,7 +17,7 @@ def run_checks():
     profile.update(student_id="0123456", match_preference="Both",
                    hobbies=["Reading", "Swimming"], bio=None,
                    ccas=[], events=[""], interest_groups=["  ", None])
-    headers = fields[::-1] + ["insta_handle", "admin_notes"]
+    headers = fields[::-1] + ["admin_notes", "extra_notes"]
     worksheet = Mock()
     worksheet.row_values.return_value = headers
     worksheet.col_values.return_value = ["student_id", "0123456"]
@@ -36,7 +36,7 @@ def run_checks():
         worksheet.col_values.assert_called_with(headers.index("student_id") + 1)
         updates = worksheet.batch_update.call_args.args[0]
         assert len(updates) == len(fields) - 1
-        assert all(item["range"] not in ("R2", "S2") for item in updates)
+        assert all(item["range"] not in (utils.rowcol_to_a1(2, len(fields) + 1), utils.rowcol_to_a1(2, len(fields) + 2)) for item in updates)
         hobby_cell = utils.rowcol_to_a1(2, headers.index("hobbies") + 1)
         assert next(item["values"][0][0] for item in updates if item["range"] == hobby_cell) == 'Reading, Swimming'
         for key in ("ccas", "events", "interest_groups"):

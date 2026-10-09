@@ -35,6 +35,7 @@ def fixture(key, text):
 
 async def run_checks():
     invalid = {
+        "insta_handle": "https://instagram.com/example",
         "name": "123", "birthday": "31/02/2004", "gender": "unknown",
         "year": "5", "course": "999", "bio": "a" * 301,
         "religion": "invalid", "mbti": "ABCD", "match_preference": "invalid",
@@ -58,6 +59,9 @@ async def run_checks():
         await bot.text_handler(update, context)
         save_profile.assert_not_called()
     for key, text, expected in [
+        ("insta_handle", "Example.User", "@example.user"),
+        ("insta_handle", "@example_user", "@example_user"),
+        ("insta_handle", " ", None),
         ("mbti", "intj", "INTJ"), ("course", "3", "Applied Artificial Intelligence"),
         ("hobbies", "Reading, reading, Swimming", ["Reading", "Swimming"]),
         ("ccas", "Music, music", ["Music"]), ("gender", "female", "Female"),

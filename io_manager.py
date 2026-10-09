@@ -75,6 +75,13 @@ def _validate_telegram(raw: str, field: dict) -> tuple:
     return None, "Telegram handle: 5-32 chars, letters/digits/underscore, starts with a letter."
 
 
+def _validate_instagram(raw: str, field: dict) -> tuple:
+    handle = raw.removeprefix("@")
+    if re.fullmatch(r"[A-Za-z0-9_.]{1,30}", handle):
+        return "@" + handle.lower(), None
+    return None, "Enter an Instagram username using 1-30 letters, digits, periods or underscores; not a link."
+
+
 def _validate_list(raw: str, field: dict) -> tuple:
     items = []
     for part in raw.split(","):
@@ -91,7 +98,7 @@ def _validate_list(raw: str, field: dict) -> tuple:
 VALIDATORS = {
     "student_id": _validate_student_id, "name": _validate_name, "date": _validate_date,
     "choice": _validate_choice, "mbti": _validate_mbti, "text": _validate_text,
-    "telegram": _validate_telegram, "list": _validate_list,
+    "instagram": _validate_instagram, "telegram": _validate_telegram, "list": _validate_list,
 }
 
 
@@ -167,10 +174,12 @@ def confirm(question: str) -> bool:
 
 # ---------- views ----------
 def profile_label(key: str) -> str:
+    if key == "insta_handle":
+        return "Instagram Handle"
     """Turn stored field keys into readable labels, preserving acronyms."""
     labels = {
         "student_id": "Student ID", "mbti": "MBTI", "ccas": "CCAs",
-        "year": "Year of Study", "events": "SIT Events",
+        "year": "Year of Study", "events": "SIT Events", "insta_handle": "Instagram Handle",
     }
     return labels.get(key, key.replace("_", " ").title())
 
@@ -189,7 +198,7 @@ def _format_value(value) -> str:
 
 
 def show_profile_summary(profile: dict, fields: list[dict]) -> None:
-    """Print the profile grouped by section, followed by derived traits."""
+    """Print the profile grouped by section, followed by the MBTI personality name."""
     current_section = None
     for field in fields:
         if field["section"] != current_section:
@@ -197,9 +206,5 @@ def show_profile_summary(profile: dict, fields: list[dict]) -> None:
             show_section(current_section)
         show(f"  {field['label']}: {_format_value(profile.get(field['key']))}")
     traits = profile.get("traits", {})
-    show_section("Derived Traits")
-    show(f"  Western zodiac: {traits.get('western_zodiac', '-')}")
-    show(f"  Chinese zodiac: {traits.get('chinese_zodiac', '-')}")
-    show(f"  Ba Zi (Y/M/D): {traits.get('year_pillar')} / {traits.get('month_pillar')} / {traits.get('day_pillar')}")
-    show(f"  Day master: {traits.get('day_master', '-')}")
+    show_section("Personality")
     show(f"  16 Personalities: {traits.get('personality_name') or '-'}")

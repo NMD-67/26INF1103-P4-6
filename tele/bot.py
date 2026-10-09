@@ -119,8 +119,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
       user_details = user_result["user"]
       reply = "User Details:\n"
       for key, value in user_details.items():
-          if key == "insta_handle":
-              continue
           reply += f"{io_manager.profile_label(key)}: {io_manager.profile_value(key, value)}\n"
 
       btn_list = [[InlineKeyboardButton("Complete / redo profile setup", callback_data="profile_setup")]]

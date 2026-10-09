@@ -42,8 +42,6 @@ def display_match(student, compatibility):
 
 current_match = 0
 
-
-
 def parse_ai_matches(ai_output):
     lines = ai_output.strip().split("\n")
     matches = []

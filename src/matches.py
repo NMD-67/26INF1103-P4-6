@@ -8,7 +8,7 @@ def add_recco_student_id(student_id, new_students):
         "status": 200/400/500,
         "error": "Error message if any"}"""
     try:
-        print(f"Addinf recco_student_id")
+        print(f"Matches: Adding recco_student_id")
         result = add_to_recco_student_id(student_id, new_students)
         if result == 200:
             return {"success": True, "status": 200}
@@ -24,7 +24,7 @@ def remove_recco_student_id(student_id, students_to_remove):
         "status": 200/400/500,
         "error": Error message if any}"""
     try:
-        print(f"Removing recco_student_id")
+        print(f"Matches: Removing recco_student_id")
         result = remove_from_recco_student_id(student_id, students_to_remove)
         if result == 200:
             return {"success": True, "status": 200}
@@ -42,7 +42,7 @@ def get_recco_student_id(student_id):
           }
         "error": Error message if any}"""
     try:
-        print(f"Getting recco_student_id")
+        print(f"Matches: Getting recco_student_id")
         result = get_user_recco_student_id(student_id)
         if result["success"]:
             return {"success": True, "recco_student_id": result["recco_student_id"]}
@@ -59,7 +59,7 @@ def add_accepted_match(student_id, new_matches):
         "status": 200/400/500,
         "error": Error message if any}"""
     try:
-        print(f"Adding accepted_match")
+        print(f"Matches: Adding accepted_match")
         result = add_to_accepted_student_id(student_id, new_matches)
         if result == 200:
             return {"success": True, "status": 200}
@@ -75,7 +75,7 @@ def remove_accepted_match(student_id, matches_to_remove):
         "status": 200/400/500,
         "error": Error message if any}"""
     try:
-        print(f"Removing accepted_match")
+        print(f"Matches: Removing accepted_match")
         result = remove_from_accepted_student_id(student_id, matches_to_remove)
         if result == 200:
             return {"success": True, "status": 200}
@@ -93,7 +93,7 @@ def get_accepted_match(student_id):
         },
         "error": Error message if any}"""
     try:
-        print(f"Getting accepted_match")
+        print(f"Matches: Getting accepted_match")
         result = get_accepted_student_id(student_id)
         if result["success"]:
             return {"success": True, "accepted_student_id": result["accepted_student_id"]}
@@ -110,7 +110,7 @@ def add_rejected_match(student_id, new_matches):
         "status": 200/400/500,
         "error": Error message if any}"""
     try:
-        print(f"Adding rejected_match")
+        print(f"Matches: Adding rejected_match")
         result = add_to_rejected_student_id(student_id, new_matches)
         if result == 200:
             return {"success": True, "status": 200}

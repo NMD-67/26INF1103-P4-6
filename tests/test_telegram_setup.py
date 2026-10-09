@@ -56,7 +56,8 @@ async def run_checks():
             else:
                 await form.skip(update, context)
         draft = context.user_data[form.STATE_KEY]["profile"]
-        assert draft["profile_complete"] and draft["traits"]["western_zodiac"] == "Capricorn"
+        assert draft["profile_complete"]
+        assert draft["traits"] == {"personality_name": None}
         assert draft["hobbies"] == ["Reading", "Swimming"]
         assert draft["ccas"] == [] and draft["expectations"] is None
         assert all(len(call.args[0]) <= 3500 for call in update.effective_message.reply_text.call_args_list)

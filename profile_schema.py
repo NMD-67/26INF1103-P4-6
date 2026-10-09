@@ -100,6 +100,9 @@ PROFILE_FIELDS = [
     {"key": "telegram_handle", "question": "What is your Telegram handle?", "label": "Telegram handle", "section": SECTION_PERSONAL,
      "required": True, "kind": "telegram", "hint": "only shared once you match"},
 
+    {"key": "insta_handle", "question": "What is your Instagram handle?", "label": "Instagram Handle", "section": SECTION_PERSONAL,
+     "required": False, "kind": "instagram", "hint": "Username only, with or without @; optional"},
+
     # --- Extracurricular ---
     {"key": "ccas", "question": "Which CCAs are you currently involved in at SIT?", "label": "Current CCAs in SIT", "section": SECTION_EXTRA,
      "required": False, "kind": "list", "hint": "comma-separated"},

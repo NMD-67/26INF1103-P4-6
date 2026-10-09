@@ -372,7 +372,7 @@ def sync_profile_to_sheets(profile: dict, partial=False) -> tuple[bool, str]:
                 values[key] = str(value)
 
         if matches:
-            # Write only owned fields, retaining Instagram and any other columns.
+            # Write only owned fields, retaining unrelated columns.
             from gspread.utils import rowcol_to_a1
             updates = []
             row = matches[0]

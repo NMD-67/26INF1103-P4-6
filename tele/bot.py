@@ -97,8 +97,6 @@ async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await profile_setup.private_chat(update):
-        return
     tele_id = get_tele_id(update)
     user = get_bot_user(tele_id)
 
@@ -139,8 +137,6 @@ async def edit_profile_button_handler(update: Update, context: ContextTypes.DEFA
 
     if query.data == "profile_setup":
         await profile_setup.setup(update, context)
-        return
-    if not await profile_setup.private_chat(update):
         return
     if profile_setup.STATE_KEY in context.user_data:
         await profile_setup.reply(update, "Finish /save or /cancel your draft before editing individual fields.")
@@ -188,7 +184,7 @@ async def edit_option_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     unavailable = "This menu is no longer active. Use /profile to edit again."
 
     # Only accept buttons from this user's current editing session.
-    if prefix != "editpick" or update.effective_chat.type != "private":
+    if prefix != "editpick":
         await query.answer(unavailable)
         return
     if profile_setup.STATE_KEY in context.user_data:
@@ -226,8 +222,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
     if not editing_field:
         return
 
-    if not await profile_setup.private_chat(update):
-        return
     key = editing_field[5:]
     definition = USER_PROFILE_HANDLERS.get(key)
     if definition is None:

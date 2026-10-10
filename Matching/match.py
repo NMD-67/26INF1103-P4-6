@@ -37,8 +37,7 @@ def display_match(student, compatibility):
 
     print("\n" + "=" * 60)
     print("       [A] Accept       [R] Reject       [N] Next")
-    print("=" * 60)
-
+    print("=" * 60) 
 
 current_match = 0
 

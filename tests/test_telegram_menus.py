@@ -43,25 +43,25 @@ async def run_checks():
 
     update, context, state = fixture("religion")
     field = form.PROFILE_FIELDS[state["index"]]
-    seen = []
-    pages = (len(field["options"]) + form.OPTIONS_PER_PAGE - 1) // form.OPTIONS_PER_PAGE
-    for page in range(pages):
-        keyboard = form.option_menu(state, field, page)
-        for row in keyboard.inline_keyboard:
-            for button in row:
-                assert len(button.callback_data.encode()) <= 64
-                if ":pick:" in button.callback_data:
-                    seen.append(button.text)
-    assert seen == field["options"]
+    keyboard = form.option_menu(state, field)
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    assert [button.text for button in buttons] == field["options"] + ["Skip"]
+    assert all(len(button.callback_data.encode()) <= 64 for button in buttons)
+    # An old pagination button must not change the current answer.
     update.callback_query.data = f"form:test1234:{state['index']}:page:1"
     await form.menu_choice(update, context)
     assert "religion" not in state["profile"]
-    update.callback_query.edit_message_text.assert_awaited_once()
+    update.callback_query.edit_message_text.assert_not_awaited()
     update.callback_query.data = f"form:test1234:{state['index']}:pick:8"
     await form.menu_choice(update, context)
     assert state["profile"]["religion"] == field["options"][8]
 
     update, context, state = fixture("mbti")
+    await form.prompt_next(update, context)
+    call = update.effective_message.reply_text.call_args
+    buttons = [button for row in call.kwargs["reply_markup"].inline_keyboard for button in row]
+    assert [button.text for button in buttons] == form.PROFILE_FIELDS[state["index"]]["options"] + ["Skip"]
+    assert "Page " not in call.args[0]
     update.callback_query.data = f"form:test1234:{state['index']}:skip:0"
     await form.menu_choice(update, context)
     assert state["profile"]["mbti"] is None

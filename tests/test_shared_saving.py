@@ -16,13 +16,13 @@ def run_checks():
                   mbti="INTJ", hobbies='["Reading"]', match_preference="Both",
                   insta_handle="keep online")
     worksheet = Mock()
-    headers = fields + ["insta_handle"]
+    headers = fields
     worksheet.col_values.return_value = ["student_id", "0123456"]
     worksheet.row_values.side_effect = lambda row: headers if row == 1 else [online[k] for k in headers]
     with patch.object(db, "get_sheet", return_value=worksheet):
         loaded = db.get_profile("0123456")
         assert loaded["hobbies"] == ["Reading"]
-        assert loaded["traits"]["western_zodiac"] == "Capricorn"
+        assert loaded["traits"] == {"personality_name": "Architect"}
         assert loaded["insta_handle"] == "keep online"
 
         # Saving performs no local file I/O and only updates the edited cell.

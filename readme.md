@@ -10,7 +10,7 @@
 **_2\. User Inputs \- Link to Google Sheets_**  
 **Background Information:**
 
-- Name, Birthday (DD/MM/YYYY) → Zodiac & Ba Zi, Religion, MBTI → 16 Personalities
+- Name, Birthday (DD/MM/YYYY), Religion, MBTI → 16 Personalities
 - Year, Course, Student ID
 
 **Personal Information:**
@@ -125,9 +125,9 @@ locally; never commit credentials. This credential file is still required and is
 not a profile database. The service account needs edit access to the sheet.
 
 Saving matches the exact `student_id` column and refuses duplicate IDs. It
-updates only form fields, preserving `insta_handle` and unrelated columns.
+updates only form fields, preserving unrelated columns.
 Lists display as comma-separated text, with empty lists shown as blank cells.
-Derived traits and completeness are calculated when needed, not stored separately.
+MBTI personality names and completeness are calculated when needed, not stored separately.
 There is no offline profile save or automatic retry. A connection failure is
 reported to the user; a failed request may require checking Sheets and retrying.
 
@@ -193,7 +193,7 @@ and `message`. A failed save keeps the Telegram draft/edit active for retry.
 No local profile file is read, written, or recreated.
 
 `database.db.get_profile()` reads a profile from Sheets and converts list
-cells into Python lists. It calculates traits in memory. `database/db.py` also
+cells into Python lists. It looks up the MBTI personality name in memory. `database/db.py` also
 keeps the existing OTP and Telegram-account-link operations. It connects on
 first use, using `SITOGETHER_SPREADSHEET_ID` or the project default.
 
@@ -234,3 +234,7 @@ database setup and any data migration. This project still uses Sheets today.
 
 `data_manager.py` has been removed by project decision. Along with local file
 storage removal, this departs from the assignment's stated module requirements.
+
+Instagram is an optional setup field stored in the existing `insta_handle` column.
+Users can enter their username with or without @, skip it during setup, and edit
+it through /profile. It appears as Instagram Handle in profile summaries.

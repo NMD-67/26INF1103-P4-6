@@ -490,6 +490,8 @@ def get_user_recco_student_id(student_id):
         return {"success": False, "error": f"Invalid JSON format for recco_student_id for student ID {student_id}"}
 
 def add_user_matches_row(student_id):
+    """
+    Adds a user to the matches sheet, returns status: 200/400/500"""
     try:
         worksheet = get_sheet("matches")
         headers = worksheet.row_values(1)
@@ -505,6 +507,8 @@ def add_user_matches_row(student_id):
         return 500
 
 def update_matches_column(student_id, column_name, new_value):
+    """
+    Updates a column in matches sheet, returns a status: 200/400/404/500"""
     try:
         print(f"Updating {column_name} for student {student_id} to {new_value}")
         worksheet = get_sheet("matches")
@@ -542,7 +546,9 @@ def add_to_recco_student_id(student_id: str, new_students: dict):
         print(f"Adding to recco_student_id for student {student_id} with new students {new_students}")
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
-            add_user_matches_row(student_id)
+            add_user_result = add_user_matches_row(student_id)
+            if add_user_result != 200:
+                return add_user_result
         current_recco_student_id = user_profile.get("recco_student_id")
         if current_recco_student_id is None or current_recco_student_id == "":
           current_recco_student_id = {}

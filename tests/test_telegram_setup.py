@@ -25,8 +25,15 @@ async def run_checks():
         await form.setup(update, context)
         assert form.STATE_KEY not in context.user_data
     with patch.object(form, "student_id_for", new=AsyncMock(return_value="0123456")) as identity:
-        await form.setup(make_update("group"), context)
-        identity.assert_not_called()
+        # Logged-in users may now start setup in a group as well as a private chat.
+        group_update = make_update("group")
+        group_context = SimpleNamespace(user_data={})
+        await form.setup(group_update, group_context)
+        identity.assert_awaited_once_with(group_update)
+        draft = group_context.user_data[form.STATE_KEY]
+        assert draft["profile"] == {"student_id": "0123456"}
+        assert draft["index"] == 1
+        assert form.PROFILE_FIELDS[1]["question"] in group_update.effective_message.reply_text.call_args.args[0]
         await form.setup(update, context)
         assert context.user_data[form.STATE_KEY]["profile"] == {"student_id": "0123456"}
         await form.skip(update, context)
@@ -56,7 +63,8 @@ async def run_checks():
             else:
                 await form.skip(update, context)
         draft = context.user_data[form.STATE_KEY]["profile"]
-        assert draft["profile_complete"] and draft["traits"]["western_zodiac"] == "Capricorn"
+        assert draft["profile_complete"]
+        assert draft["traits"] == {"personality_name": None}
         assert draft["hobbies"] == ["Reading", "Swimming"]
         assert draft["ccas"] == [] and draft["expectations"] is None
         assert all(len(call.args[0]) <= 3500 for call in update.effective_message.reply_text.call_args_list)

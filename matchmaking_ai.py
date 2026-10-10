@@ -1,202 +1,67 @@
 import os
-import csv
 import json
-import io
 import time
+import asyncio
+import logging
 
-import requests
 import groq
 from groq import Groq
 from dotenv import load_dotenv
 
+# Team code. This file sits in the repo root (if you move it into src/, use `from matches import ...`).
+from src.matches import get_accepted_match
+from database.db import get_profile
 
-_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-load_dotenv(dotenv_path=_env_path)
+logger = logging.getLogger(__name__)
+load_dotenv()   # reads MATCHMAKING_API_KEY from .env
 
 
 # ======================================================================
-# SECTION 1: CONFIG
+# CONFIG
 # ======================================================================
 
-PROFILES_TAB_GID = "0"                         
-MATCHES_TAB_GID = "577783517"  
+GROQ_MODEL = "openai/gpt-oss-120b"
+MAX_ATTEMPTS = 3                     # tries per call before giving up
+RETRY_WAIT_SECONDS = 2               # wait before retry #2; doubles each time (2s, 4s...)
+API_TIMEOUT_SECONDS = 30             # give up on a single API call after this long
+MAX_ITEMS_PER_LIST = 5               # keep messages short enough for Telegram
 
-COL_SWIPER_ID = "student_id"
-COL_SWIPED_ID = "accepted_student_id"
-
-# --- Column names inside the "users" tab -----------------------------------
-PROFILE_ID_COLUMN = "student_id"
-PROFILE_FIELDS = [   # these are the fields sent to the AI
-    "name", "birthday", "gender", "year", "course", "bio", "religion",
+# Profile fields sent to the AI 
+PROFILE_FIELDS = [
+    "birthday", "gender", "year", "course", "bio", "religion",
     "mbti", "match_preference", "here_for", "expectations", "ccas",
     "events", "hobbies", "interest_groups",
 ]
-# insta_handle / tele_handle are NOT sent to the AI (not compatibility info),
-# but they ARE returned in user_a_info / user_b_info for the front-end.
 
-# --- Groq model name ---------------------------------------------------------
-# CHANGE THIS if Groq retires it (see console.groq.com/docs/deprecations).
-GROQ_MODEL = "openai/gpt-oss-120b"
+# The 3 lists we expect back from the AI.
+OUTPUT_KEYS = ("common_interests", "conversation_starters", "outing_ideas")
 
-# How long (seconds) to reuse a downloaded sheet before fetching it again.
-CACHE_SECONDS = 30
+# What the bot gets back about each person (to show who the match is).
+CONTACT_FIELDS = ("student_id", "name", "insta_handle", "telegram_handle")
 
 
 # ======================================================================
-# SECTION 2: GOOGLE SHEETS
+# PART 1: AI MODULE (API interaction)
 # ======================================================================
-
-_csv_cache: dict[str, tuple[float, list[dict]]] = {}  # gid -> (time fetched, rows)
-
-
-def _fetch_tab_as_dicts(gid: str) -> list[dict]:
-    """Downloads one sheet tab as CSV -> list of dicts keyed by header row."""
-    cached = _csv_cache.get(gid)
-    if cached and time.time() - cached[0] < CACHE_SECONDS:
-        return cached[1]
-
-    sheet_id = os.environ["GOOGLE_SHEET_ID"]
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
-
-    response = requests.get(url, timeout=15)
-    response.raise_for_status()  # errors if the sheet isn't shared / gid is wrong
-
-    rows = list(csv.DictReader(io.StringIO(response.text)))
-    _csv_cache[gid] = (time.time(), rows)
-    return rows
-
-
-def get_all_swipes() -> list[dict]:
-    """Returns every row of the matches tab as a list of dicts."""
-    if not str(MATCHES_TAB_GID).isdigit():
-        raise ValueError("Set MATCHES_TAB_GID at the top of matchmaking_ai.py "
-                         "to the matches tab's gid (the number after #gid= in the URL).")
-    return _fetch_tab_as_dicts(MATCHES_TAB_GID)
-
-
-def get_profile(user_id: str) -> dict | None:
-    """Looks up one user's profile row by student ID. None if not found."""
-    user_id = str(user_id).strip()
-    for row in _fetch_tab_as_dicts(PROFILES_TAB_GID):
-        if str(row.get(PROFILE_ID_COLUMN, "")).strip() == user_id:
-            return row
-    return None
-
-
-# ======================================================================
-# SECTION 3: MATCHING LOGIC — did both users accept each other?
-# ======================================================================
-
-def _split_ids(cell) -> list[str]:
-    """Turns one sheet cell like '1008, 1007' into ['1008', '1007'].
-    A blank cell gives an empty list."""
-    if not cell:
-        return []
-    return [part.strip() for part in str(cell).split(",") if part.strip()]
-
-
-def get_mutual_matches(swipe_records: list[dict] | None = None) -> list[tuple[str, str]]:
-    """
-    Returns only the pairs where BOTH people accepted each other,
-    e.g. [("1001", "1008")]. Each pair appears once.
-
-    swipe_records: optional list of row dicts for testing without the sheet.
-    """
-    if swipe_records is None:
-        swipe_records = get_all_swipes()
-
-    # Step 1: every "A accepted B" as a directed pair. Each row is one
-    # student, and their accepted cell can list several IDs.
-    liked_pairs = set()
-    for row in swipe_records:
-        swiper = str(row[COL_SWIPER_ID]).strip()
-        if not swiper:
-            continue
-        for swiped in _split_ids(row[COL_SWIPED_ID]):
-            if swiped != swiper:  # ignore a student "accepting" themselves
-                liked_pairs.add((swiper, swiped))
-
-    # Step 2: mutual = (A, B) exists AND (B, A) exists
-    matches = []
-    already_added = set()
-    for (a, b) in liked_pairs:
-        if (b, a) in liked_pairs:
-            pair = tuple(sorted((a, b)))  # so (A,B) and (B,A) count once
-            if pair not in already_added:
-                already_added.add(pair)
-                matches.append(pair)
-    return matches
-
-
-# ======================================================================
-# SECTION 4: AI CONVERSATION SUGGESTIONS (Groq)
-# ======================================================================
-
-_groq_client = None
-
-
-def _get_groq_client():
-    global _groq_client
-    if _groq_client is None:
-        _groq_client = Groq(api_key=os.getenv("MATCHMAKING_API_KEY"))
-    return _groq_client
-
 
 def _profile_to_text(profile: dict) -> str:
-    """Turns a profile dict into a readable text block for the AI prompt."""
+    """One profile -> lines like 'hobbies: reading, baking' (empty fields skipped)."""
     lines = []
     for field in PROFILE_FIELDS:
         value = profile.get(field)
-        if value not in (None, ""):
-            lines.append(f"{field}: {value}")
+        if value in (None, "", [], ()):
+            continue
+        if isinstance(value, (list, tuple)):
+            value = ", ".join(str(v) for v in value)
+        lines.append(f"{field}: {value}")
     return "\n".join(lines)
 
 
-def _contact_info(profile: dict) -> dict:
-    """The details the front-end needs to show who the match is."""
-    return {
-        "student_id": profile.get(PROFILE_ID_COLUMN),
-        "name": profile.get("name"),
-        "insta_handle": profile.get("insta_handle"),
-        "tele_handle": profile.get("telegram_handle"),
-    }
-
-
-def _generate_content_with_retry(client, prompt: str, max_attempts: int = 4):
-    """Calls Groq; retries with a growing wait if the server is busy (5xx)."""
-    wait_seconds = 2
-    for attempt in range(1, max_attempts + 1):
-        try:
-            return client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-            )
-        except groq.InternalServerError:
-            if attempt == max_attempts:
-                raise
-            print(f"Groq is busy (attempt {attempt}/{max_attempts}), "
-                  f"retrying in {wait_seconds}s...")
-            time.sleep(wait_seconds)
-            wait_seconds *= 2  # 2s, 4s, 8s...
-
-
-def AI_Conversation(user_a_id: str, user_b_id: str) -> dict:
-    """
-    Takes two matched student IDs, reads both profiles, asks the AI for
-    conversation starters / common interests / date ideas, and RETURNS the
-    result dict described at the top of this file.
-    Raises ValueError if either student has no profile.
-    """
-    profile_a = get_profile(user_a_id)
-    profile_b = get_profile(user_b_id)
-
-    if profile_a is None or profile_b is None:
-        missing_id = user_a_id if profile_a is None else user_b_id
-        raise ValueError(f"No profile found for user_id={missing_id}")
-
-    prompt = f"""You are helping two university students who just matched on
-a dating app for their school. Based on their profiles below, suggest
-things that could help them start talking.
+def build_prompt(profile_a: dict, profile_b: dict) -> str:
+    """STEP 1: turn the two profiles (the input record) into the prompt text."""
+    return f"""You are helping two university students who just matched on
+an app for their school. Compare their profiles and help them start
+talking.
 
 Student A:
 {_profile_to_text(profile_a)}
@@ -207,85 +72,210 @@ Student B:
 Reply with ONLY valid JSON (no markdown fences, no extra text), in exactly
 this shape:
 {{
-  "conversation_starters": ["...", "...", "..."],
   "common_interests": ["...", "..."],
-  "date_ideas": ["...", "...", "..."]
+  "conversation_starters": ["...", "...", "..."],
+  "outing_ideas": ["...", "...", "..."]
 }}
 
-Give 3-5 short, one-sentence items per list. Only use what's actually in
-the two profiles — don't invent shared interests that aren't there."""
+Give 3-{MAX_ITEMS_PER_LIST} short, one-sentence items per list. Only use what's actually in
+the two profiles, don't invent facts about them.
 
-    client = _get_groq_client()
-    response = _generate_content_with_retry(client, prompt)
-    raw_text = response.choices[0].message.content.strip()
+common_interests must NEVER be empty. List real overlaps first (same hobby,
+CCA, course, or what they are looking for). If there are none, list the
+closest real connections instead: related or complementary interests (e.g.
+sketching and robotics are both creative, hands-on hobbies) or similar goals.
+Do not use trivial filler like "both are students".
 
-    # The AI was told to return pure JSON, but strip code fences just in case
-    if raw_text.startswith("```"):
-        raw_text = raw_text.strip("`")
-        if raw_text.startswith("json"):
-            raw_text = raw_text[4:].strip()
+Do NOT use anyone's name, or "Student A" / "Student B", anywhere. Write each
+conversation starter as something one student could say directly to the
+other (e.g. "What's your favourite hiking trail?")."""
 
+
+_client = None
+
+
+def _get_client() -> Groq:
+    """Creates the Groq client once. Raises if MATCHMAKING_API_KEY is missing."""
+    global _client
+    if _client is None:
+        # max_retries=0: we do our own retrying below, so waits don't stack up.
+        _client = Groq(api_key=os.getenv("MATCHMAKING_API_KEY"),
+                       timeout=API_TIMEOUT_SECONDS, max_retries=0)
+    return _client
+
+
+def call_api(client: Groq, prompt: str) -> str:
+    """STEP 2: send the prompt, return the AI's raw text."""
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content or ""
+
+
+def parse_response(raw_text: str) -> dict:
+    """STEP 3: pull the JSON out of the reply (ignores ```json fences / extra words).
+    Raises ValueError if it isn't valid JSON."""
+    start, end = raw_text.find("{"), raw_text.rfind("}")
+    return json.loads(raw_text[start:end + 1])
+
+
+def validate_response(data: dict) -> dict:
+    """STEP 4: check the schema. Each of the 3 keys must be a non-empty list of
+    text. Returns a clean dict with only those keys, or raises ValueError."""
+    clean = {}
+    for key in OUTPUT_KEYS:
+        items = data.get(key)
+        if not isinstance(items, list) or not all(isinstance(i, str) for i in items):
+            raise ValueError(f"'{key}' is missing or not a list of text")
+        items = [i.strip() for i in items if i.strip()]
+        if not items:
+            raise ValueError(f"'{key}' is empty")
+        clean[key] = items[:MAX_ITEMS_PER_LIST]   # cap the length
+    return clean
+
+
+# Problems worth retrying: bad output (ValueError), network trouble, rate limit,
+# server error. Anything else (wrong API key, retired model...) won't fix itself.
+_RETRYABLE = (ValueError, groq.APIConnectionError,
+              groq.RateLimitError, groq.InternalServerError)
+
+
+def generate_suggestions(profile_a: dict, profile_b: dict) -> dict:
+    """
+    THE AI MODULE'S MAIN FUNCTION. Never raises.
+      success -> {"success": True, "common_interests": [...], "conversation_starters": [...], "outing_ideas": [...]}
+      failure -> {"success": False, "error": "..."}   (also logged)
+    """
     try:
-        parsed = json.loads(raw_text)
-    except json.JSONDecodeError:
-        # One bad AI reply shouldn't crash the bot
-        parsed = {
-            "conversation_starters": [],
-            "common_interests": [],
-            "date_ideas": [],
-            "raw_response": raw_text,
-        }
-
-    return {
-        "user_a": user_a_id,
-        "user_b": user_b_id,
-        "user_a_info": _contact_info(profile_a),
-        "user_b_info": _contact_info(profile_b),
-        **parsed,
-    }
-
-
-# ======================================================================
-# SECTION 5: FUNCTIONS FOR TEAMMATES (Raphael take info form here)
-# ======================================================================
-
-def _safe_ai_conversation(user_a_id: str, user_b_id: str) -> dict:
-    """Like AI_Conversation, but a failure for one pair returns an
-    {"error": ...} dict instead of crashing the whole list."""
-    try:
-        return AI_Conversation(user_a_id, user_b_id)
+        prompt = build_prompt(profile_a, profile_b)
+        client = _get_client()
     except Exception as e:
-        return {"user_a": user_a_id, "user_b": user_b_id, "error": str(e)}
+        logger.error("matchmaking_ai: setup failed: %s: %s", type(e).__name__, e)
+        return {"success": False, "error": f"{type(e).__name__}: {e}"}
+
+    last_error = "unknown error"
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            raw_text = call_api(client, prompt)
+            return {"success": True, **validate_response(parse_response(raw_text))}
+        except _RETRYABLE as e:                       # worth another try
+            last_error = f"{type(e).__name__}: {e}"
+            logger.warning("matchmaking_ai: attempt %d/%d failed: %s",
+                           attempt, MAX_ATTEMPTS, last_error)
+        except Exception as e:                        # won't fix itself - stop now
+            logger.error("matchmaking_ai: API call failed: %s: %s", type(e).__name__, e)
+            return {"success": False, "error": f"{type(e).__name__}: {e}"}
+
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_WAIT_SECONDS * 2 ** (attempt - 1))   # wait longer each time
+
+    logger.error("matchmaking_ai: giving up after %d attempts: %s", MAX_ATTEMPTS, last_error)
+    return {"success": False, "error": last_error}
 
 
-def get_all_match_suggestions() -> list[dict]:
-    """RETURNS a result dict for every mutual match in the sheet.
-    (One AI call per match, so many matches = slower.)"""
-    return [_safe_ai_conversation(a, b) for a, b in get_mutual_matches()]
+async def generate_suggestions_async(profile_a: dict, profile_b: dict) -> dict:
+    """Same as generate_suggestions, but won't freeze an async bot while waiting."""
+    return await asyncio.to_thread(generate_suggestions, profile_a, profile_b)
+
+
+# ======================================================================
+# PART 2: INPUT ADAPTER (reads src/matches.py, feeds PART 1)
+# ======================================================================
+
+def _load_profile(student_id: str) -> dict | None:
+    """One student's profile dict, or None if it can't be loaded."""
+    try:
+        profile = get_profile(student_id)
+    except Exception as e:
+        logger.error("matchmaking_ai: couldn't load profile %s: %s: %s",
+                     student_id, type(e).__name__, e)
+        return None
+    return profile if isinstance(profile, dict) and profile.get("student_id") else None
+
+
+def _split_ids(value) -> list[str]:
+    """['1013, 1002, 1009'] -> ['1013', '1002', '1009']
+    (the database packs several IDs into one piece of text)."""
+    if not isinstance(value, (list, tuple)):      # a single value instead of a list
+        value = [value or ""]
+    return [i.strip() for item in value for i in str(item).split(",") if i.strip()]
+
+
+def _accepted_ids(student_id: str) -> list[str]:
+    """IDs this student accepted. matches.py returns {'success': True, 'accepted_student_id': [...]}."""
+    result = get_accepted_match(student_id)
+    if not result.get("success"):
+        logger.error("matchmaking_ai: couldn't read accepted list for %s: %s",
+                     student_id, result.get("error"))
+        return []
+    return _split_ids(result.get("accepted_student_id"))
+
+
+def _mutual_match_ids(user_id: str) -> list[str]:
+    """Students who accepted user_id AND whom user_id accepted."""
+    return [other for other in _accepted_ids(user_id)
+            if other != user_id and user_id in _accepted_ids(other)]
 
 
 def get_matches_for_user(user_id: str) -> list[dict]:
-    """RETURNS a result dict for each mutual match that involves user_id.
-    In each dict, user_a is always the person asking (user_id) and user_b
-    is their match."""
+    """MAIN ENTRY POINT: one result dict per mutual match of user_id
+    (user_a = the person asking, user_b = their match). [] = no matches yet.
+    Success -> user_a_info, user_b_info + the 3 lists. Failure -> success False + error."""
     user_id = str(user_id).strip()
+    match_ids = _mutual_match_ids(user_id)                       # e.g. ['1013', '1002', '1009']
+    profile_a = _load_profile(user_id) if match_ids else None    # loaded once, reused below
+
     results = []
-    for a, b in get_mutual_matches():
-        if user_id == a:
-            other = b
-        elif user_id == b:
-            other = a
+    for other_id in match_ids:
+        result = {"user_a": user_id, "user_b": other_id}
+        profile_b = _load_profile(other_id)
+        if profile_a is None or profile_b is None:
+            missing = user_id if profile_a is None else other_id
+            result.update(success=False, error=f"no profile found for {missing}")
         else:
-            continue  # this pair doesn't involve our user
-        results.append(_safe_ai_conversation(user_id, other))
+            result["user_a_info"] = {f: profile_a.get(f) for f in CONTACT_FIELDS}
+            result["user_b_info"] = {f: profile_b.get(f) for f in CONTACT_FIELDS}
+            result.update(generate_suggestions(profile_a, profile_b))
+        results.append(result)
     return results
 
 
-# ======================================================================
-# SECTION 6: SELF-TEST (only runs with `python matchmaking_ai.py`,
-# never when a teammate imports this file)
-# ======================================================================
+async def get_matches_for_user_async(user_id: str) -> list[dict]:
+    """Same as get_matches_for_user, but won't freeze an async bot while waiting."""
+    return await asyncio.to_thread(get_matches_for_user, user_id)
+
+
+def format_recommendations(result: dict, for_user: str = "a") -> str:
+    """One result dict -> plain-text message to send. for_user="a" writes it for
+    user_a about user_b; "b" is the other way round."""
+    if not result.get("success"):
+        return "Sorry, we couldn't generate suggestions for this match right now."
+
+    other = result["user_b_info"] if for_user == "a" else result["user_a_info"]
+    lines = [f"You matched with {other.get('name') or 'someone new'}!"]
+    if other.get("telegram_handle"):
+        lines.append(f"Telegram: {other['telegram_handle']}")
+    if other.get("insta_handle"):
+        lines.append(f"Instagram: {other['insta_handle']}")
+
+    for title, key in [("Things you have in common", "common_interests"),
+                       ("Conversation starters", "conversation_starters"),
+                       ("Outing ideas", "outing_ideas")]:
+        lines += ["", f"{title}:"] + [f"- {item}" for item in result[key]]
+    return "\n".join(lines)
+
+# ---------- TEMPORARY TEST  ----------
 if __name__ == "__main__":
-    results = get_all_match_suggestions()
-    print(f"Found {len(results)} mutual match(es)\n")
-    print(json.dumps(results, indent=2, ensure_ascii=False))
+    logging.basicConfig(level=logging.WARNING)   # show any problems in the terminal
+    TEST_STUDENT_ID = "1002"                     # <-- change to a real student ID
+
+    results = get_matches_for_user(TEST_STUDENT_ID)
+    print(f"\n{TEST_STUDENT_ID} has {len(results)} mutual match(es)\n")
+    for r in results:
+        if r["success"]:
+            print(format_recommendations(r))
+        else:
+            print(f"FAILED for {r['user_b']}: {r['error']}")
+        print("-" * 40)
+# -------------------------------------------------------------------------------------

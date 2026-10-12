@@ -53,21 +53,24 @@ def compatibility_label(score):
         return None
 
     if score >= 85:
-        return "High Compatibility"
+        return "High Compatibility ✨"
     if score >= 70:
-        return "Moderate Compatibility"
-    return "Low Compatibility"
+        return "Moderate Compatibility 🔥"
+    return "Low Compatibility 🤔"
 
-def show_next_match(matches):
+def show_next_match(recommendations):
     global current_match
 
-    if current_match >= len(matches):
+    item = get_next_match(recommendations, current_match)
+
+    if item is None:
         return False
 
-    student_id, compatibility = matches[current_match]
+    student_id, score = item
     current_match += 1
-    target_id = matches.read_profile(student_id, sheet_name="users")
-    return target_id, compatibility
+
+    profile = db.get_profile(student_id)
+    return profile, score
 
 def check_user_decision(decision):
     return decision.lower() in VALID_DECISIONS
@@ -336,48 +339,3 @@ def get_next_match(matches, current_index):
         return matches[current_index]
     return None
 
-# ===== testing space :) ======
-
-# #while current_match < len(parsed_matches):
-#     show_next_match(parsed_matches)
-
-#     user_input = input("\nPress N to see the next match: ")
-
-#     if user_input.lower() != "n":
-#         print("Please press N to continue.")
-
-def main(id):
-    matches = load_matches(id)
-
-    if not matches:
-        print("No matches found.")
-        return
-
-    for student_id, score in matches.items():
-        print("\n--------------------")
-        print(f"Student ID: {student_id}")
-        print(f"Score: {score}")
-
-        details = db.read_profile(student_id, sheet_name="users")
-        print("Details:", details)
-
-        while True:
-            choice = input("Accept or Reject? ").strip().lower()
-
-            if choice == "accept":
-                add_accepted_match(id, student_id)
-                is_mutual = is_mutual_match(id, student_id)
-                if is_mutual:
-                    print(f"{student_id} accepted and it's a mutual match!")
-                print(f"{student_id} accepted")
-                break
-            elif choice == "reject":
-                add_rejected_match(id, student_id)
-                print(f"{student_id} rejected")
-                break
-            else:
-                print("Please type 'accept' or 'reject'.")
-test = load_matches("1001")
-
-sorted_matches = sort_matches_by_score(test)
-print(sorted_matches)

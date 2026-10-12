@@ -102,32 +102,32 @@ def main():
             if choice == "1":
                 print("Finding compatible profiles. Please wait...")
 
-                client = profile_matching_AI.get_groq_client()
+                recommendations = []
+                client = None
 
                 try:
-                    results = profile_matching_AI.AI_Profile_Matching(
+                    client = profile_matching_AI.get_groq_client()
+                    recommendations = profile_matching_AI.AI_Profile_Matching(
                         student_id, client
                     )
+                except Exception as error:
+                    print("Could not generate new recommendations:", error)
                 finally:
-                    client.close()
+                    if client is not None:
+                        client.close()
 
-                recommendations = []
+                if recommendations:
+                    result = profile_matching_AI.Add_To_Database(
+                        student_id, recommendations
+                    )
 
-                for result in results:
-                    target_id = str(result["user_id"])
+                    if result != 200:
+                        print("Could not save new recommendations.")
+                        print("Checking previously saved recommendations instead.")
+                else:
+                    print("No new recommendations. Checking saved recommendations.")
 
-                    if target_id != student_id:
-                        recommendations.append(result)
-
-                if not recommendations:
-                    print("No recommendations returned. Check any AI errors above.")
-                    continue
-
-                if profile_matching_AI.Add_To_Database(
-                    student_id, recommendations
-                ) != 200:
-                    print("Could not save recommendations.")
-                    continue
+                # Continue to browse saved recommendations.
                 # Load saved recommendations.
                 
                 new_connections = []

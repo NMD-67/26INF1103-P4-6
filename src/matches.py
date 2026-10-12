@@ -133,7 +133,7 @@ def get_rejected_match(student_id):
     try:
         result = get_rejected_student_id(student_id)
         if result["success"]:
-            return {"success": True, "accepted_student_id": result["rejected_student_id"]}
+            return {"success": True, "rejected_student_id": result["rejected_student_id"]}
         else:
             return {"success": False, "error": result["error"]}
     except Exception as e:

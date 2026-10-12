@@ -52,21 +52,24 @@ def compatibility_label(score):
         return None
 
     if score >= 85:
-        return "High Compatibility"
+        return "High Compatibility ✨"
     if score >= 70:
-        return "Moderate Compatibility"
-    return "Low Compatibility"
+        return "Moderate Compatibility 🔥"
+    return "Low Compatibility 🤔"
 
-def show_next_match(matches):
+def show_next_match(recommendations):
     global current_match
 
-    if current_match >= len(matches):
+    item = get_next_match(recommendations, current_match)
+
+    if item is None:
         return False
 
-    student_id, compatibility = matches[current_match]
+    student_id, score = item
     current_match += 1
-    target_id = matches.read_profile(student_id, sheet_name="users")
-    return target_id, compatibility
+
+    profile = db.get_profile(student_id)
+    return profile, score
 
 def check_user_decision(decision):
     return decision.lower() in VALID_DECISIONS
@@ -108,8 +111,6 @@ def is_mutual_match(student_id, target_id):
     second = get_accepted_students(target_id)
 
     if not first["success"] or not second["success"]:
-        logging.warning("is_mutual_match: could not read accepted lists for %s / %s",
-                        student_id, target_id)
         return False
     return (
         target_id in _clean_ids(first["accepted_student_id"])
@@ -333,8 +334,15 @@ def record_reject(student_id, target_id):
     }
 
 def sort_matches_by_score(match_dict):
-    """Sort matches by score in descending order."""
-    return sorted(match_dict.items(), key=lambda x: x[1], reverse=True)
+    # Convert spreadsheet text into a Python dictionary.
+    if isinstance(match_dict, str):
+        match_dict = json.loads(match_dict or "{}")
+
+    return sorted(
+        match_dict.items(),
+        key=lambda item: int(item[1]),
+        reverse=True,
+    )
 
 def get_next_user(student_id: str):
     #Get user row 

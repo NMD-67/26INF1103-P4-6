@@ -121,3 +121,20 @@ def add_rejected_match(student_id, new_matches):
             return {"success": False, "error": f"Failed to add rejected_match for student ID {student_id}", "status": result}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+def get_rejected_match(student_id):
+    """ Retrieves the list of accepted matches for a given student ID.
+        return a dict: {
+            "success": True/False,
+            "accepted_student_id": dict {
+              student_id: compatibility_score,
+            },
+            "error": Error message if any}"""
+    try:
+        result = get_rejected_student_id(student_id)
+        if result["success"]:
+            return {"success": True, "accepted_student_id": result["rejected_student_id"]}
+        else:
+            return {"success": False, "error": result["error"]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

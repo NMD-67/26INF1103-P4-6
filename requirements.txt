@@ -1,12 +1,8 @@
 python-telegram-bot>=21.0
 python-dotenv>=1.0
-<<<<<<< HEAD
 gspread>=6.1,<7
 
 google-genai>=1.0.0
 requests>=2.32.0
 python-dotenv>=1.0.1
 groq>=0.13.0
-=======
-gspread>=1.0
->>>>>>> ac0d2310e837471c350a8807447fb4998fc73da9

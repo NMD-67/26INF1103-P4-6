@@ -68,7 +68,7 @@ async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     otp = context.args[1]
     tele_id = get_tele_id(update)
     result = validate_otp(student_id=student_id, otp=otp)
-    print(f"opt res {result}")
+    # print(f"opt res {result}")
     if result == 200:
         save_user(tele_id, student_id)
         context.user_data.pop(profile_setup.STATE_KEY, None)
@@ -109,7 +109,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
       if student_id is None:
           await send_msg(update, "Student ID not found!")
           return
-      print("Getting user info")
+      # print("Getting user info")
       user_result = get_user_info(student_id)
       if user_result is None or user_result.get("status") == 404:
           await send_msg(update, "Error! User details not found")
@@ -121,14 +121,19 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
       btn_list = [[InlineKeyboardButton("Complete / redo profile setup", callback_data="profile_setup")]]
 
-      for key, value in USER_PROFILE_HANDLERS.items():
-          btn_list.append([InlineKeyboardButton(f"Edit {value['label']}", callback_data=f"edit_{key}")])
+      new_row = []
+      for index, (key, value) in enumerate(USER_PROFILE_HANDLERS.items()):
+          if len(new_row) < 2:
+              new_row.append(InlineKeyboardButton(f"Edit {value['label']}", callback_data=f"edit_{key}"))
+              continue
+          btn_list.append(new_row)
+          new_row = []
 
       keyboard = InlineKeyboardMarkup(btn_list)
 
       await update.message.reply_text(reply, reply_markup=keyboard)
     except Exception as e:
-        print(f"Error with /profile: {e}")
+        # print(f"Error with /profile: {e}")
         await send_msg(update, "An Error occurred, contact nmd_002")
 
 async def edit_profile_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

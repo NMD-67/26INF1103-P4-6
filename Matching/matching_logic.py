@@ -111,8 +111,6 @@ def is_mutual_match(student_id, target_id):
     second = get_accepted_students(target_id)
 
     if not first["success"] or not second["success"]:
-        logging.warning("is_mutual_match: could not read accepted lists for %s / %s",
-                        student_id, target_id)
         return False
     return (
         target_id in _clean_ids(first["accepted_student_id"])
@@ -336,8 +334,15 @@ def record_reject(student_id, target_id):
     }
 
 def sort_matches_by_score(match_dict):
-    """Sort matches by score in descending order."""
-    return sorted(match_dict.items(), key=lambda x: x[1], reverse=True)
+    # Convert spreadsheet text into a Python dictionary.
+    if isinstance(match_dict, str):
+        match_dict = json.loads(match_dict or "{}")
+
+    return sorted(
+        match_dict.items(),
+        key=lambda item: int(item[1]),
+        reverse=True,
+    )
 
 def get_next_user(student_id: str):
     #Get user row 

@@ -108,7 +108,7 @@ def get_row_numbers_by_column_name(worksheet, column_name, value):
 def get_cell_value(worksheet, row_number, column_name):
     """
     Returns the value of a cell given the row number and column name"""
-    headers = get_header_values()
+    headers = get_header_values(worksheet)
     if not column_name_exists(worksheet=worksheet, column_name=column_name):
         return {"success": False, "error": f"Column {column_name} doesn't exist"}
 
@@ -294,17 +294,108 @@ def update_user(**student_details):
     return 500
 
 def delete_user(student_id):
-    try:  
-      # print(f"Deleting student {student_id}")
-      row_number = get_row_numbers_by_column_name(get_sheet("users"), "student_id", student_id)
+    student_id = str(student_id).strip()
 
-      res = get_sheet("otp").delete_rows(row_number[0])
-      # print(res)
-      return 200
-    except Exception as e:
-        print(f"Error deleting otp row {row_number}: {e}")
+    if not student_id:
+        return 400
+
+    try:
+        sheets = {}
+        rows_to_delete = {}
+        updates = []
+
+        # Read all records before making changes.
+        for name in ["matches", "bot_users", "otp", "users"]:
+            sheet = get_sheet(name)
+            data = sheet.get_all_values()
+            headers = data[0]
+            id_column = headers.index("student_id")
+
+            sheets[name] = sheet
+            rows_to_delete[name] = []
+
+            for row_number, row in enumerate(data[1:], start=2):
+                # Fill missing cells with empty strings.
+                row = row + [""] * (len(headers) - len(row))
+
+                if row[id_column] == student_id:
+                    rows_to_delete[name].append(row_number)
+                    continue
+
+                if name != "matches":
+                    continue
+
+                # Remove this student from other people's matching lists.
+                for column in [
+                    "recco_student_id",
+                    "accepted_student_id",
+                    "rejected_student_id",
+                ]:
+                    column_index = headers.index(column)
+                    cell = row[column_index]
+
+                    if not cell:
+                        continue
+
+                    original = json.loads(cell)
+
+                    if column == "recco_student_id":
+                        if isinstance(original, dict):
+                            cleaned = original.copy()
+                            cleaned.pop(student_id, None)
+
+                        elif isinstance(original, list):
+                            cleaned = [
+                                item for item in original
+                                if str(item["id"]) != student_id
+                            ]
+
+                        else:
+                            raise ValueError("Invalid recommendation format")
+
+                    else:
+                        cleaned = []
+                        values = original
+
+                        if not isinstance(values, list):
+                            values = [values]
+
+                        for value in values:
+                            for other_id in str(value).split(","):
+                                other_id = other_id.strip()
+
+                                if (
+                                    other_id
+                                    and other_id != student_id
+                                    and other_id not in cleaned
+                                ):
+                                    cleaned.append(other_id)
+
+                    if cleaned != original:
+                        updates.append(
+                            (
+                                row_number,
+                                column_index + 1,
+                                json.dumps(cleaned),
+                            )
+                        )
+
+        # Update references before deleting any rows.
+        for row_number, column_number, value in updates:
+            sheets["matches"].update_cell(
+                row_number, column_number, value
+            )
+
+        # Delete bottom-up so row numbers do not shift.
+        for name in ["matches", "bot_users", "otp", "users"]:
+            for row_number in reversed(rows_to_delete[name]):
+                sheets[name].delete_rows(row_number)
+
+        return 200
+
+    except Exception as error:
+        print("Account deletion could not finish:", error)
         return 500
-
 # get_otp("2603197")
 #get_row_values(get_sheet("otp"), 2)
 #print(get_user("2676767"))
@@ -406,10 +497,6 @@ def get_profile(student_id):
         return None
     profile = normalize_profile(profile)
     # Derived information is calculated when needed, not stored in a second file.
-    try:
-        profile["traits"] = logic_manager.derive_profile_traits(profile)
-    except (ValueError, TypeError, KeyError):
-        profile["traits"] = {}
     profile["profile_complete"] = logic_manager.is_profile_complete(profile, PROFILE_FIELDS)
     return profile
 
@@ -549,6 +636,7 @@ def add_to_recco_student_id(student_id: str, new_students: dict):
             add_user_result = add_user_matches_row(student_id)
             if add_user_result != 200:
                 return add_user_result
+            user_profile = {}
         current_recco_student_id = user_profile.get("recco_student_id")
         if current_recco_student_id is None or current_recco_student_id == "":
           current_recco_student_id = {}

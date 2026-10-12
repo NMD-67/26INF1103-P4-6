@@ -1,16 +1,8 @@
-"""Domain logic for profiles: completeness checks and MBTI personality names.
+"""Domain logic for profiles: completeness checks
 
 No printing, no file access, no API calls.
 """
 from datetime import datetime
-
-PERSONALITIES = {
-    "INTJ": "Architect", "INTP": "Logician", "ENTJ": "Commander", "ENTP": "Debater",
-    "INFJ": "Advocate", "INFP": "Mediator", "ENFJ": "Protagonist", "ENFP": "Campaigner",
-    "ISTJ": "Logistician", "ISFJ": "Defender", "ESTJ": "Executive", "ESFJ": "Consul",
-    "ISTP": "Virtuoso", "ISFP": "Adventurer", "ESTP": "Entrepreneur", "ESFP": "Entertainer",
-}
-
 
 def parse_birthday(text):
     """Convert a DD/MM/YYYY string to a date."""
@@ -43,19 +35,6 @@ def is_profile_complete(profile, fields):
     """A profile is complete when no required field is missing."""
     missing = find_missing_fields(profile, fields)
     return len(missing) == 0
-
-
-def get_personality_name(mbti):
-    """Map an MBTI code to its 16 Personalities name (None if not given)."""
-    if not mbti:
-        return None
-    return PERSONALITIES.get(mbti.upper())
-
-
-def derive_profile_traits(profile):
-    """Look up the personality name from the optional MBTI answer."""
-    return {"personality_name": get_personality_name(profile.get("mbti"))}
-
 
 # =========== Matching logic ===========
 

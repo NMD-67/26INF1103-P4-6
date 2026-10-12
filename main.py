@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from database import db
+from src import matches
 from src import auth
 from Matching import matching_logic
 from profile_schema import PROFILE_FIELDS
@@ -19,11 +20,13 @@ def main():
     print("Welcome to SITogether")
 
     # 1. Send the OTP.
-    student_id = input("Enter your student ID: ").strip()
+    while True:
+        student_id = input("Enter your student ID: ").strip()
 
-    if not auth.is_valid_student_id(student_id):
-        print("Please enter a 7-digit student ID.")
-        return
+        if auth.is_valid_student_id(student_id):
+            break
+
+        print("Please enter a valid 7-digit student ID.")
 
     result = asyncio.run(auth.login_user(student_id))
 
@@ -97,90 +100,60 @@ def main():
         try:
 
             if choice == "1":
-                if db.read_profile(student_id, sheet_name="matches") is None:
-                    if db.add_user_matches_row(student_id) != 200:
-                        print("Could not create your matching record.")
-                        continue
-
-                accepted = db.get_accepted_student_id(student_id)
-                rejected = db.get_rejected_student_id(student_id)
-                if not accepted["success"] or not rejected["success"]:
-                    print("Could not read your previous decisions.")
-                    continue
-
                 print("Finding compatible profiles. Please wait...")
+
                 client = profile_matching_AI.get_groq_client()
+
                 try:
-                    results = profile_matching_AI.AI_Profile_Matching(student_id, client)
+                    results = profile_matching_AI.AI_Profile_Matching(
+                        student_id, client
+                    )
                 finally:
                     client.close()
 
                 recommendations = []
+
                 for result in results:
                     target_id = str(result["user_id"])
-                    if (
-                        target_id != student_id
-                        and target_id not in accepted["accepted_student_id"]
-                        and target_id not in rejected["rejected_student_id"]
-                    ):
+
+                    if target_id != student_id:
                         recommendations.append(result)
 
                 if not recommendations:
-                    print("No new recommendations returned. Check any AI errors above.")
+                    print("No recommendations returned. Check any AI errors above.")
                     continue
-                if profile_matching_AI.Add_To_Database(student_id, recommendations) != 200:
+
+                if profile_matching_AI.Add_To_Database(
+                    student_id, recommendations
+                ) != 200:
                     print("Could not save recommendations.")
                     continue
-
                 # Load saved recommendations.
-                saved_matches = matching_logic.load_matches(student_id)
-                if saved_matches is None:
-                    print("Could not load recommendations. Please try again.")
-                    continue
-            
-                profiles_to_show = []
-
-                for target_id, score in saved_matches.items():
-                    target_id = str(target_id)
-
-                    if target_id == student_id:
-                        continue
-
-                    if target_id in accepted["accepted_student_id"]:
-                        continue
-
-                    if target_id in rejected["rejected_student_id"]:
-                        continue
-
-                    if matching_logic.compatibility_label(score) is None:
-                        continue
-
-                    profiles_to_show.append((target_id, int(score)))
-
-                # Start browsing from the first profile.
-                profiles_to_show = matching_logic.sort_matches_by_score(
-                    dict(profiles_to_show)
-                )
-                matching_logic.current_match = 0
+                
                 new_connections = []
 
-                if not profiles_to_show:
-                    print("No new profiles to show.")
-
                 while True:
-                    item = matching_logic.show_next_match(profiles_to_show)
+                    next_user = matching_logic.get_next_user(student_id)
 
-                    if item is False:
+                    if not next_user["success"]:
+                        print(next_user["error"])
                         break
 
-                    matched_profile, score = item
+                    target_id = next_user["student_id"]
+                    score = next_user["compatability"]
 
-                    # Skip profiles that have been deleted.
-                    if not matched_profile:
+                    matched_profile = db.get_profile(target_id)
+
+                    if matched_profile is None:
+                        removed = matches.remove_recco_student_id(
+                            student_id, [target_id]
+                        )
+
+                        if not removed["success"]:
+                            print("Could not remove an unavailable profile.")
+                            break
+
                         continue
-
-                    target_id = str(matched_profile["student_id"])
-
                     print("\n--- Recommended Profile ---")
 
                     label = matching_logic.compatibility_label(score)
@@ -257,6 +230,7 @@ def main():
                     print("No mutual matches yet. Both students must accept each other.")
                 for connection in connections:
                     print(matchmaking_ai.format_recommendations(connection))
+                    print("================================================\n")
 
             elif choice == "3":
                 profile = db.get_profile(student_id)
@@ -275,34 +249,56 @@ def main():
                 if profile is None:
                     print("Your account could not be found. Please log in again.")
                     return
-                fields = [field for field in PROFILE_FIELDS if field["key"] != "student_id"]
-                for number, field in enumerate(fields, start=1):
-                    print(f"{number}. {io_manager.profile_label(field['key'])}")
-                number = input("Choose a field to update (0 to return): ").strip()
-                if number == "0":
-                    continue
-                if not number.isdigit() or not 1 <= int(number) <= len(fields):
-                    print("Invalid field number.")
-                    continue
-                field = fields[int(number) - 1]
-                if logic_manager.should_skip_field(profile, field):
-                    print("This field does not apply to your current profile choices.")
-                    continue
-                profile[field["key"]] = io_manager.ask_field(field)
-                for field in fields:
+
+                fields = [f for f in PROFILE_FIELDS if f["key"] != "student_id"]
+                changed = False
+
+                while True:
+                    print("\n--- Update Profile ---")
+                    for n, f in enumerate(fields, start=1):
+                        print(f"{n}. {io_manager.profile_label(f['key'])}")
+
+                    number = input("Choose a field to update (0 to finish): ").strip()
+
+                    if number == "0":
+                        break
+
+                    if not number.isdigit() or not 1 <= int(number) <= len(fields):
+                        print("Invalid field number.")
+                        continue
+
+                    field = fields[int(number) - 1]
+
                     if logic_manager.should_skip_field(profile, field):
-                        profile[field["key"]] = [] if field["kind"] == "list" else None
-                missing = logic_manager.find_missing_fields(profile, PROFILE_FIELDS)
-                if missing:
-                    profile.update(io_manager.collect_missing(missing))
-                if io_manager.confirm("Save these changes?"):
-                    result = db.save_profile(profile)
-                    print("Profile updated." if result["saved"] else result["message"])
+                        print("This field does not apply to your current profile choices.")
+                        continue
+
+                    profile[field["key"]] = io_manager.ask_field(field)
+                    changed = True
+
+                    # Clear fields that no longer apply after this change.
+                    for f in fields:
+                        if logic_manager.should_skip_field(profile, f):
+                            profile[f["key"]] = [] if f["kind"] == "list" else None
+
+                    # Ask for any newly required fields.
+                    missing = logic_manager.find_missing_fields(profile, PROFILE_FIELDS)
+                    if missing:
+                        profile.update(io_manager.collect_missing(missing))
+
+                    print("Field updated. You can edit another, or enter 0 to finish.")
+
+                if changed:
+                    if io_manager.confirm("Save these changes?"):
+                        result = db.save_profile(profile)
+                        print("Profile updated." if result["saved"] else result["message"])
+                    else:
+                        print("Changes discarded.")
 
             elif choice == "5":
                 if io_manager.confirm("Permanently delete your account and matching records?"):
                     if db.delete_user(student_id) == 200:
-                        print("Account deleted. Goodbye!")
+                        print("Account deleted. Thank you for using SITogether, Goodbye!")
                         return
                     print("Deletion did not finish. Some records may have changed. Please retry.")
             

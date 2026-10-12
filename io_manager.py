@@ -260,13 +260,11 @@ def _format_value(value):
 
 
 def show_profile_summary(profile, fields):
-    """Print the profile grouped by section, followed by the MBTI personality name."""
+    """Print the profile grouped by section"""
     current_section = None
     for field in fields:
         if field["section"] != current_section:
             current_section = field["section"]
             show_section(current_section)
         show(f"  {field['label']}: {_format_value(profile.get(field['key']))}")
-    traits = profile.get("traits", {})
-    show_section("Personality")
-    show(f"  16 Personalities: {traits.get('personality_name') or '-'}")
+

@@ -1,18 +1,46 @@
 import json
+from re import match
 import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src import matches 
-from src.matches import add_accepted_match, add_rejected_match
+from src.matches import add_accepted_match, add_rejected_match, get_accepted_match, get_rejected_match
 from database import db
 
 VALID_DECISIONS = ("accept", "reject")
 current_match = 0
 
 def load_matches(id):
-    recco_ids = matches.get_user_recco_student_id(id)
-    return recco_ids["recco_student_id"]
+    recco_ids = db.get_user_recco_student_id(id)
+
+    if not isinstance(recco_ids, dict) or not recco_ids.get("success"):
+        return None
+
+    recommended = recco_ids.get("recco_student_id", {})
+
+    accepted_result = get_accepted_match(id)
+    rejected_result = get_rejected_match(id)
+
+    accepted_ids = set()
+    rejected_ids = set()
+
+    if isinstance(accepted_result, dict) and accepted_result.get("success"):
+        accepted_ids = set(accepted_result.get("accepted_student_id", []))
+
+    if isinstance(rejected_result, dict) and rejected_result.get("success"):
+        rejected_ids = set(rejected_result.get("rejected_student_id", []))
+
+    excluded_ids = accepted_ids | rejected_ids
+
+    filtered_matches = {
+        student_id: score
+        for student_id, score in recommended.items()
+        if student_id not in excluded_ids
+    }
+
+    return filtered_matches
+
 
 def compatibility_label(score):
     """Convert a compatibility score into the team's score band."""
@@ -298,6 +326,16 @@ def record_reject(student_id, target_id):
 
     }
 
+def sort_matches_by_score(match_dict):
+    """Sort matches by score in descending order."""
+    return sorted(match_dict.items(), key=lambda x: x[1], reverse=True)
+
+def get_next_match(matches, current_index):
+    """Get the next match from the list of matches."""
+    if current_index < len(matches):
+        return matches[current_index]
+    return None
+
 # ===== testing space :) ======
 
 # #while current_match < len(parsed_matches):
@@ -339,5 +377,5 @@ def main(id):
                 break
             else:
                 print("Please type 'accept' or 'reject'.")
-
-main("1001")
+test = load_matches("1001")
+print(test)

@@ -1,12 +1,6 @@
-<<<<<<< HEAD
-"""Google Sheets access for profiles, login codes, and Telegram links."""
-from __future__ import annotations
-
-=======
 import gspread  # type: ignore[import-not-found]
 from google.oauth2.service_account import Credentials
 import os
->>>>>>> ac0d2310e837471c350a8807447fb4998fc73da9
 import datetime
 import json
 import logging

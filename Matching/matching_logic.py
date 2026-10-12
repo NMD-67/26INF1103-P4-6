@@ -1,5 +1,4 @@
 import json
-from re import match
 import sys
 import os
 
@@ -93,6 +92,12 @@ def get_accepted_students(student_id):
         "success": True,
         "accepted_student_id": accepted,
     }
+def _clean_ids(value):
+    """Turn a stored accepted list into clean ID strings.
+    Handles ['1013', '1002'] and also packed cells like ['1013, 1002, 1009']."""
+    if not isinstance(value, (list, tuple)):
+        value = [value or ""]
+    return [i.strip() for item in value for i in str(item).split(",") if i.strip()]
 
 def is_mutual_match(student_id, target_id):
     """Return True only when both students accepted each other."""
@@ -103,11 +108,12 @@ def is_mutual_match(student_id, target_id):
     second = get_accepted_students(target_id)
 
     if not first["success"] or not second["success"]:
+        logging.warning("is_mutual_match: could not read accepted lists for %s / %s",
+                        student_id, target_id)
         return False
-    print(first["accepted_student_id"], second["accepted_student_id"])
     return (
-        target_id in first["accepted_student_id"]
-        and student_id in second["accepted_student_id"]
+        target_id in _clean_ids(first["accepted_student_id"])
+        and student_id in _clean_ids(second["accepted_student_id"])
     )
 
 def handle_match_decision(student_id, target_id, decision):
@@ -391,7 +397,7 @@ def main(id):
                 break
             else:
                 print("Please type 'accept' or 'reject'.")
-test = load_matches("1001")
-
-sorted_matches = sort_matches_by_score(test)
-print(sorted_matches)
+if __name__ == "__main__":
+    test = load_matches("1001")
+    if test:
+        print(sort_matches_by_score(test))

@@ -121,8 +121,13 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
       btn_list = [[InlineKeyboardButton("Complete / redo profile setup", callback_data="profile_setup")]]
 
-      for key, value in USER_PROFILE_HANDLERS.items():
-          btn_list.append([InlineKeyboardButton(f"Edit {value['label']}", callback_data=f"edit_{key}")])
+      new_row = []
+      for index, (key, value) in enumerate(USER_PROFILE_HANDLERS.items()):
+          if len(new_row) < 2:
+              new_row.append(InlineKeyboardButton(f"Edit {value['label']}", callback_data=f"edit_{key}"))
+              continue
+          btn_list.append(new_row)
+          new_row = []
 
       keyboard = InlineKeyboardMarkup(btn_list)
 

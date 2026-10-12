@@ -12,6 +12,7 @@ from tele import profile_setup
 
 from database.db import save_user, get_bot_user
 from src.auth import login_user, validate_otp, get_user_info
+from Matching.matching_logic import get_next_user
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR.parent / ".env")
@@ -261,14 +262,25 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
     return
 
 async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tele_id = get_tele_id(update)
+    user = get_bot_user(tele_id)
+    if user is None:
+        await send_msg(update, "You are not logged in! Log in using the /login command")
+        return
+    student_id = user["student_id"]
     await send_msg(update, "Finding Matches...")
-    # Get recco_student_id dict
-    # If empty, run function to match users, get new list
-    # If not empty, get student_id with highest score
+    
+    # Get next user
+    # If empty, say ran out of ppl
+    get_next_user_result = get_next_user(student_id)
+    if not get_next_user_result["success"]:
+        return await send_msg(update, f"An error occured: {get_next_user_result["error"]}")
+
+    await send_msg(update, f'Student ID: {get_next_user_result["student_id"]}')
     # Get student profile with student_id
     # Display the student
     # Give options "👍" or "👎"
-    # If 👍, add to accepted student id -> Check if match has user's student_id in accepted_student_id
+    # If 👍, add to accepted student id -> Check if mutual
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile")

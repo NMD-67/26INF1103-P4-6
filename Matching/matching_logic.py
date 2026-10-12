@@ -333,6 +333,20 @@ def sort_matches_by_score(match_dict):
     """Sort matches by score in descending order."""
     return sorted(match_dict.items(), key=lambda x: x[1], reverse=True)
 
+def get_next_user(student_id: str):
+    #Get user row 
+    user_profile_response = db.read_profile(student_id, "matches")
+    if user_profile_response is None:
+        return {"success": False, "error": "Profile not found"}
+    #TODO: Check if recco is empty, wait for update
+    
+    sorted_recco_id = sort_matches_by_score(user_profile_response["recco_student_id"])
+    for student_id, compatability in sorted_recco_id:
+        if student_id in user_profile_response["accepted_student_id"] or student_id in user_profile_response["rejected_student_id"]:
+            continue
+        return {"success": True, "student_id": student_id, "compatability": compatability}
+    return {"success": False, "error": "Out of reccomended students"}
+
 def get_next_match(matches, current_index):
     """Get the next match from the list of matches."""
     if current_index < len(matches):

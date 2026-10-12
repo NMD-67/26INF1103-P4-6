@@ -378,4 +378,6 @@ def main(id):
             else:
                 print("Please type 'accept' or 'reject'.")
 test = load_matches("1001")
-print(test)
+
+sorted_matches = sort_matches_by_score(test)
+print(sorted_matches)

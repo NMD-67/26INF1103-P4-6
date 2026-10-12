@@ -337,7 +337,10 @@ def delete_user(student_id):
                     if not cell:
                         continue
 
+                try:
                     original = json.loads(cell)
+                except json.JSONDecodeError:
+                    original = [item.strip() for item in cell.split(",") if item.strip()]
 
                     if column == "recco_student_id":
                         if isinstance(original, dict):

@@ -266,16 +266,16 @@ def format_recommendations(result: dict, for_user: str = "a") -> str:
     return "\n".join(lines)
 
 # ---------- TEMPORARY TEST  ----------
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.WARNING)   # show any problems in the terminal
-    TEST_STUDENT_ID = "1002"                     # <-- change to a real student ID
+# if __name__ == "__main__":
+#     logging.basicConfig(level=logging.WARNING)   # show any problems in the terminal
+#     TEST_STUDENT_ID = "1002"                     # <-- change to a real student ID
 
-    results = get_matches_for_user(TEST_STUDENT_ID)
-    print(f"\n{TEST_STUDENT_ID} has {len(results)} mutual match(es)\n")
-    for r in results:
-        if r["success"]:
-            print(format_recommendations(r))
-        else:
-            print(f"FAILED for {r['user_b']}: {r['error']}")
-        print("-" * 40)
+#     results = get_matches_for_user(TEST_STUDENT_ID)
+#     print(f"\n{TEST_STUDENT_ID} has {len(results)} mutual match(es)\n")
+#     for r in results:
+#         if r["success"]:
+#             print(format_recommendations(r))
+#         else:
+#             print(f"FAILED for {r['user_b']}: {r['error']}")
+#         print("-" * 40)
 # -------------------------------------------------------------------------------------

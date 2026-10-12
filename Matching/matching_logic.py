@@ -3,7 +3,8 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from . import matches
+from src import matches 
+from src.matches import add_accepted_match, add_rejected_match
 from database import db
 
 VALID_DECISIONS = ("accept", "reject")
@@ -28,12 +29,6 @@ def compatibility_label(score):
     if score >= 70:
         return "Moderate Compatibility"
     return "Low Compatibility"
-
-def parse_ai_matches(matches_dict): #seperates the matches for iteration
-    return [
-        (student_id, score)
-        for student_id, score in matches_dict.items()
-    ]
 
 def show_next_match(matches):
     global current_match
@@ -64,9 +59,7 @@ def get_accepted_students(student_id):
             ),
         }
 
-    accepted = parse_ai_matches(
-        result.get("accepted_student_id")
-    )
+    accepted = result.get("accepted_student_id")
 
     return {
         "success": True,
@@ -83,7 +76,7 @@ def is_mutual_match(student_id, target_id):
 
     if not first["success"] or not second["success"]:
         return False
-
+    print(first["accepted_student_id"], second["accepted_student_id"])
     return (
         target_id in first["accepted_student_id"]
         and student_id in second["accepted_student_id"]
@@ -188,7 +181,7 @@ def create_match_decision(student_id, target_id, decision):
         "decision": decision,
     }
 
-def record_accept(student_id, target_id):
+def record_accept(student_id, target_id): 
     """Save an Accept using the existing matches.py database functions."""
     decision = create_match_decision(
         student_id,
@@ -305,24 +298,18 @@ def record_reject(student_id, target_id):
 
     }
 
-
 # ===== testing space :) ======
 
-parsed_matches = parse_ai_matches(load_matches("1001")) 
+# #while current_match < len(parsed_matches):
+#     show_next_match(parsed_matches)
 
-while current_match < len(parsed_matches):
-    show_next_match(parsed_matches)
+#     user_input = input("\nPress N to see the next match: ")
 
-    user_input = input("\nPress N to see the next match: ")
-
-    if user_input.lower() != "n":
-        print("Please press N to continue.")
+#     if user_input.lower() != "n":
+#         print("Please press N to continue.")
 
 def main(id):
-    matches = matches.get_user_recco_student_id(id)
-
-    accepted = []
-    rejected = []
+    matches = load_matches(id)
 
     if not matches:
         print("No matches found.")
@@ -333,19 +320,24 @@ def main(id):
         print(f"Student ID: {student_id}")
         print(f"Score: {score}")
 
-        details = matches.read_profile(student_id, sheet_name="profiles")
+        details = db.read_profile(student_id, sheet_name="users")
         print("Details:", details)
 
         while True:
             choice = input("Accept or Reject? ").strip().lower()
 
             if choice == "accept":
-                accepted.append(student_id)
+                add_accepted_match(id, student_id)
+                is_mutual = is_mutual_match(id, student_id)
+                if is_mutual:
+                    print(f"{student_id} accepted and it's a mutual match!")
                 print(f"{student_id} accepted")
                 break
             elif choice == "reject":
-                rejected.append(student_id)
+                add_rejected_match(id, student_id)
                 print(f"{student_id} rejected")
                 break
             else:
                 print("Please type 'accept' or 'reject'.")
+
+main("1001")

@@ -255,6 +255,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
         await send_msg(update, message + " Please retry your answer, or /cancel.")
     return
 
+async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_msg(update, "Finding Matches...")
+    # Get recco_student_id dict
+    # If empty, run function to match users, get new list
+    # If not empty, get student_id with highest score
+    # Get student profile with student_id
+    # Display the student
+    # Give options "👍" or "👎"
+    # If 👍, add to accepted student id -> Check if match has user's student_id in accepted_student_id
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile")
@@ -271,6 +280,7 @@ async def configure_command_menu(application):
         BotCommand("cancel", "Cancel your current draft"),
         BotCommand("help", "Show instructions and commands"),
         BotCommand("start", "Show the welcome message"),
+        BotCommand("find_match", "View reccomended profiles")
     ])
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
@@ -288,6 +298,7 @@ def run_bot():
     app.add_handler(CommandHandler("skip", profile_setup.skip))
     app.add_handler(CommandHandler("save", profile_setup.save))
     app.add_handler(CommandHandler("cancel", profile_setup.cancel))
+    app.add_handler(CommandHandler("find_match", find_match_handler))
     app.add_handler(CallbackQueryHandler(profile_setup.menu_choice, pattern=r"^form:"))
     app.add_handler(CallbackQueryHandler(edit_option_handler, pattern=r"^editpick:"))
     app.add_handler(CallbackQueryHandler(edit_profile_button_handler, pattern=r"^(profile_setup|edit_.*)$"))

@@ -257,6 +257,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
 
 async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, "Finding Matches...")
+    # Get recco_student_id dict
+    # If empty, run function to match users, get new list
+    # If not empty, get student_id with highest score
+    # Get student profile with student_id
+    # Display the student
+    # Give options "👍" or "👎"
+    # If 👍, add to accepted student id -> Check if match has user's student_id in accepted_student_id
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile")

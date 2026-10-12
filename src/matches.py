@@ -60,6 +60,9 @@ def add_accepted_match(student_id, new_matches):
         "error": Error message if any}"""
     try:
         print(f"Matches: Adding accepted_match")
+        if isinstance(new_matches, str):
+            new_matches = [new_matches]
+          
         result = add_to_accepted_student_id(student_id, new_matches)
         if result == 200:
             return {"success": True, "status": 200}

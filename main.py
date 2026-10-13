@@ -214,11 +214,7 @@ def main():
                         print("A matched profile could not be loaded.")
                         continue
                     print("Preparing suggestions for your new connection...")
-                    result = asyncio.run(
-                        matchmaking_ai.generate_suggestions_async(yours, theirs)
-                    )
-                    result["user_a_info"] = yours
-                    result["user_b_info"] = theirs
+                    result = matchmaking_ai.prepare_connection(yours, theirs)
                     print(matchmaking_ai.format_recommendations(result))
 
             elif choice == "2":

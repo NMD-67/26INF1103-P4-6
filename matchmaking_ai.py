@@ -213,6 +213,24 @@ def _mutual_match_ids(user_id: str) -> list[str]:
     return [other for other in candidates
             if other != user_id and is_mutual_match(user_id, other)]
 
+def prepare_connection(profile_a, profile_b):
+    result = generate_suggestions(profile_a, profile_b)
+
+    result["user_a"] = profile_a["student_id"]
+    result["user_b"] = profile_b["student_id"]
+
+    result["user_a_info"] = {
+        field: profile_a.get(field)
+        for field in CONTACT_FIELDS
+    }
+
+    result["user_b_info"] = {
+        field: profile_b.get(field)
+        for field in CONTACT_FIELDS
+    }
+
+    return result
+
 def get_matches_for_user(user_id: str) -> list[dict]:
     """MAIN ENTRY POINT: one result dict per mutual match of user_id
     (user_a = the person asking, user_b = their match). [] = no matches yet.
@@ -229,9 +247,7 @@ def get_matches_for_user(user_id: str) -> list[dict]:
             missing = user_id if profile_a is None else other_id
             result.update(success=False, error=f"no profile found for {missing}")
         else:
-            result["user_a_info"] = {f: profile_a.get(f) for f in CONTACT_FIELDS}
-            result["user_b_info"] = {f: profile_b.get(f) for f in CONTACT_FIELDS}
-            result.update(generate_suggestions(profile_a, profile_b))
+            result = prepare_connection(profile_a, profile_b)
         results.append(result)
     return results
 

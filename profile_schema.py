@@ -76,7 +76,7 @@ PROFILE_FIELDS = [
     {
         "key": "student_id",
         "question": "What is your student ID?",
-        "label": "Student ID (your login)",
+        "label": "Student ID",
         "section": SECTION_BACKGROUND,
         "required": True,
         "kind": "student_id",
@@ -115,7 +115,7 @@ PROFILE_FIELDS = [
     {
         "key": "year",
         "question": "Which year of study are you in?",
-        "label": "Year of study",
+        "label": "Year of Study",
         "section": SECTION_BACKGROUND,
         "required": True,
         "kind": "choice",
@@ -169,7 +169,7 @@ PROFILE_FIELDS = [
     {
         "key": "match_preference",
         "question": "Who would you like to be matched with?",
-        "label": "Match me with",
+        "label": "Match Preference"
         "section": SECTION_PERSONAL,
         "required": True,
         "kind": "choice",
@@ -189,7 +189,7 @@ PROFILE_FIELDS = [
     {
         "key": "expectations",
         "question": "What are you looking for in a relationship?",
-        "label": "Expectations in relationships",
+        "label": "Expectations in Relationships",
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "text",
@@ -223,7 +223,7 @@ PROFILE_FIELDS = [
     {
         "key": "ccas",
         "question": "Which CCAs are you currently involved in at SIT?",
-        "label": "Current CCAs in SIT",
+        "label": "CCAs",
         "section": SECTION_EXTRA,
         "required": False,
         "kind": "list",
@@ -233,7 +233,7 @@ PROFILE_FIELDS = [
     {
         "key": "events",
         "question": "Which SIT events have you participated in?",
-        "label": "Events joined in SIT",
+        "label": "SIT Events",
         "section": SECTION_EXTRA,
         "required": False,
         "kind": "list",
@@ -253,7 +253,7 @@ PROFILE_FIELDS = [
     {
         "key": "interest_groups",
         "question": "Which interest groups do you belong to outside SIT?",
-        "label": "Outside interest groups",
+        "label": "Outside Interest Groups",
         "section": SECTION_EXTRA,
         "required": False,
         "kind": "list",

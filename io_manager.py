@@ -1,5 +1,7 @@
 """Terminal questions and output, plus answer validation shared with Telegram."""
 from datetime import date
+from profile_schema import PROFILE_FIELDS
+from src import auth
 
 import logic_manager
 
@@ -23,13 +25,11 @@ def show_error(message):
 def show_section(title):
     print(f"\n=== {title} ===")
 
-
-# ---------- validators: (raw, field) -> (value, error) ----------
 def _validate_student_id(raw, field):
-    if len(raw) == 7 and raw.isdecimal():
+    if auth.is_valid_student_id(raw):
         return raw, None
-    return None, "Student ID must be exactly 7 digits."
 
+    return None, "Student ID must be exactly 7 digits."
 
 def _validate_name(raw, field):
     error = "Name must be 2-60 letters (spaces, . ' - allowed)."
@@ -180,7 +180,7 @@ def ask_field(field):
     if not field["required"]:
         suffix += " (optional, Enter to skip)"
     while True:
-        raw = input(f"{field['label']}{suffix}: ").strip()
+        raw = input(f"{field['question']}{suffix} ").strip()
         value, error = validate_field(raw, field)
         if error:
             show_error(error)
@@ -200,10 +200,7 @@ def collect_profile(fields, preset):
         if field["key"] in profile:
             continue
         if logic_manager.should_skip_field(profile, field):
-            if field["kind"] == "list":
-                profile[field["key"]] = []
-            else:
-                profile[field["key"]] = None
+            logic_manager.clear_field(profile, field)
             continue
         if field["section"] != current_section:
             current_section = field["section"]
@@ -234,13 +231,10 @@ def confirm(question):
 
 # ---------- views ----------
 def profile_label(key):
-    """Turn stored field keys into readable labels, preserving acronyms."""
-    labels = {
-        "student_id": "Student ID", "mbti": "MBTI", "ccas": "CCAs",
-        "year": "Year of Study", "events": "SIT Events", "insta_handle": "Instagram Handle",
-    }
-    if key in labels:
-        return labels[key]
+    for field in PROFILE_FIELDS:
+        if field["key"] == key:
+            return field["label"]
+
     return key.replace("_", " ").title()
 
 
@@ -258,13 +252,17 @@ def _format_value(value):
         return ", ".join(value)
     return str(value)
 
-
 def show_profile_summary(profile, fields):
-    """Print the profile grouped by section"""
     current_section = None
+
     for field in fields:
         if field["section"] != current_section:
             current_section = field["section"]
             show_section(current_section)
-        show(f"  {field['label']}: {_format_value(profile.get(field['key']))}")
+
+        key = field["key"]
+        label = profile_label(key)
+        value = profile_value(key, profile.get(key))
+
+        show(f"  {label}: {value}")
 

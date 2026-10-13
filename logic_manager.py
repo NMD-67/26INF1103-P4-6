@@ -55,3 +55,47 @@ def get_personality_name(mbti):
 def derive_profile_traits(profile):
     """Look up the personality name from the optional MBTI answer."""
     return {"personality_name": get_personality_name(profile.get("mbti"))}
+
+
+# =========== Matching logic ===========
+
+def parse_ai_matches(ai_output):
+    lines = ai_output.strip().split("\n")
+    matches = []
+
+    for line in lines:
+        if ":" in line and "%" in line:
+            name_part, score_part = line.split(":")
+            name = name_part.strip()
+            score = int(score_part.strip().replace("%", ""))
+
+            matches.append({
+                "id": name,
+                "score": score,
+            })
+
+    return matches
+
+def load_matches():
+    match_list = []
+    try:
+        file = open("Matching/Sample_score.txt", "r")
+        lines = file.readlines()
+
+        for line in lines:
+            line = line.strip()
+
+            if line != "":
+                parts = line.split(":")
+
+                if len(parts) == 2:
+                    student_id = parts[0]
+                    score = int(parts[1].replace("%", ""))
+
+                    match_list.append([student_id, score])
+        file.close()
+
+    except FileNotFoundError:
+        print("file not found")
+
+    return match_list

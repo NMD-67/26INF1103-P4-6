@@ -1,12 +1,6 @@
-<<<<<<< HEAD
-"""Google Sheets access for profiles, login codes, and Telegram links."""
-from __future__ import annotations
-
-=======
 import gspread  # type: ignore[import-not-found]
 from google.oauth2.service_account import Credentials
 import os
->>>>>>> ac0d2310e837471c350a8807447fb4998fc73da9
 import datetime
 import json
 import logging
@@ -114,7 +108,7 @@ def get_row_numbers_by_column_name(worksheet, column_name, value):
 def get_cell_value(worksheet, row_number, column_name):
     """
     Returns the value of a cell given the row number and column name"""
-    headers = get_header_values()
+    headers = get_header_values(worksheet)
     if not column_name_exists(worksheet=worksheet, column_name=column_name):
         return {"success": False, "error": f"Column {column_name} doesn't exist"}
 
@@ -123,7 +117,7 @@ def get_cell_value(worksheet, row_number, column_name):
     return {"success": True, "value": value}
 
 def delete_row(worksheet: gspread.Worksheet, row_number):
-    print(f'Deleting row {row_number} from {worksheet}')
+    # print(f'Deleting row {row_number} from {worksheet}')
     try:
         worksheet.delete_rows(row_number)
         return 200
@@ -142,7 +136,7 @@ def get_row_values(worksheet, row_numbers):
 
     row_values += [""] * (len(headers) - len(row_values))
 
-    print(row_values)
+    # print(row_values)
     values.append(dict(zip(headers, row_values)))
 
   return values
@@ -173,13 +167,13 @@ def upload_otp(student_id, otp):
 def get_otp(student_id):
     try:
       user_row_number = get_row_numbers_by_column_name(get_sheet("otp"), "student_id", student_id)
-      print(f"User row number: {user_row_number}")
+      #print(f"User row number: {user_row_number}")
       if not user_row_number["success"]:
           return 500
       user_row = get_row_values(get_sheet("otp"), user_row_number["rows"])
       if user_row is None or len(user_row) < 1:
           return 404
-      print(user_row)
+      #print(user_row)
       return {"row_numbers": user_row_number["rows"], "otp": user_row[0]["otp"]}
     except Exception as e:
         print(f"An error occured when checking otp: {e}")
@@ -187,13 +181,13 @@ def get_otp(student_id):
 
 def delete_otp(row_numbers):
   try:  
-    print(f'Delting otp {row_numbers}')
+    # print(f'Delting otp {row_numbers}')
     i = 0
     for row_number in row_numbers:
-      print(f"Deleting otp row {row_number}")
+      # print(f"Deleting otp row {row_number}")
       res = get_sheet("otp").delete_rows(row_number - i)
       i += 1
-      print(res)
+      # print(res)
     return 200
   except Exception as e:
       print(f"Error deleting otp row {row_number}: {e}")
@@ -253,7 +247,7 @@ def add_user(**fields):
         if user_result.get("status") != 404:
             return 500
         res = get_sheet("users").append_row(row)
-        print(f"res: {res}")
+        # print(f"res: {res}")
         return 201
     except Exception as e:
         print(f"Error when adding user: {e}")
@@ -265,7 +259,7 @@ def update_user(**student_details):
         update_user(student_id="676767", name="Alice", bio="hi")
     """
     try:
-        print("Updating user")
+        # print("Updating user")
         headers = get_header_values(get_sheet("users"))
         if "student_id" not in student_details:
             return 400
@@ -279,7 +273,7 @@ def update_user(**student_details):
 
         for index, column in enumerate(headers):
             if column in student_details and column != "student_id":
-                print(f"Col: {column}, row: {row}, index: {index}, value: {student_details.get(column)}")
+                # print(f"Col: {column}, row: {row}, index: {index}, value: {student_details.get(column)}")
                 value = safe_json_load(student_details.get(column))
                 get_sheet("users").update_cell(row, index + 1, value)
         return 200
@@ -300,17 +294,111 @@ def update_user(**student_details):
     return 500
 
 def delete_user(student_id):
-    try:  
-      print(f"Deleting student {student_id}")
-      row_number = get_row_numbers_by_column_name(get_sheet("users"), "student_id", student_id)
+    student_id = str(student_id).strip()
 
-      res = get_sheet("otp").delete_rows(row_number[0])
-      print(res)
-      return 200
-    except Exception as e:
-        print(f"Error deleting otp row {row_number}: {e}")
+    if not student_id:
+        return 400
+
+    try:
+        sheets = {}
+        rows_to_delete = {}
+        updates = []
+
+        # Read all records before making changes.
+        for name in ["matches", "bot_users", "otp", "users"]:
+            sheet = get_sheet(name)
+            data = sheet.get_all_values()
+            headers = data[0]
+            id_column = headers.index("student_id")
+
+            sheets[name] = sheet
+            rows_to_delete[name] = []
+
+            for row_number, row in enumerate(data[1:], start=2):
+                # Fill missing cells with empty strings.
+                row = row + [""] * (len(headers) - len(row))
+
+                if row[id_column] == student_id:
+                    rows_to_delete[name].append(row_number)
+                    continue
+
+                if name != "matches":
+                    continue
+
+                # Remove this student from other people's matching lists.
+                for column in [
+                    "recco_student_id",
+                    "accepted_student_id",
+                    "rejected_student_id",
+                ]:
+                    column_index = headers.index(column)
+                    cell = row[column_index]
+
+                    if not cell:
+                        continue
+
+                    try:
+                        original = json.loads(cell)
+                    except json.JSONDecodeError:
+                        original = [item.strip() for item in cell.split(",") if item.strip()]
+
+                    if column == "recco_student_id":
+                        if isinstance(original, dict):
+                            cleaned = original.copy()
+                            cleaned.pop(student_id, None)
+
+                        elif isinstance(original, list):
+                            cleaned = [
+                                item for item in original
+                                if str(item["id"]) != student_id
+                            ]
+
+                        else:
+                            raise ValueError("Invalid recommendation format")
+
+                    else:
+                        cleaned = []
+                        values = original
+
+                        if not isinstance(values, list):
+                            values = [values]
+
+                        for value in values:
+                            for other_id in str(value).split(","):
+                                other_id = other_id.strip()
+
+                                if (
+                                    other_id
+                                    and other_id != student_id
+                                    and other_id not in cleaned
+                                ):
+                                    cleaned.append(other_id)
+
+                    if cleaned != original:
+                        updates.append(
+                            (
+                                row_number,
+                                column_index + 1,
+                                json.dumps(cleaned),
+                            )
+                        )
+
+        # Update references before deleting any rows.
+        for row_number, column_number, value in updates:
+            sheets["matches"].update_cell(
+                row_number, column_number, value
+            )
+
+        # Delete bottom-up so row numbers do not shift.
+        for name in ["matches", "bot_users", "otp", "users"]:
+            for row_number in reversed(rows_to_delete[name]):
+                sheets[name].delete_rows(row_number)
+
+        return 200
+
+    except Exception as error:
+        print("Account deletion could not finish:", error)
         return 500
-
 # get_otp("2603197")
 #get_row_values(get_sheet("otp"), 2)
 #print(get_user("2676767"))
@@ -412,10 +500,6 @@ def get_profile(student_id):
         return None
     profile = normalize_profile(profile)
     # Derived information is calculated when needed, not stored in a second file.
-    try:
-        profile["traits"] = logic_manager.derive_profile_traits(profile)
-    except (ValueError, TypeError, KeyError):
-        profile["traits"] = {}
     profile["profile_complete"] = logic_manager.is_profile_complete(profile, PROFILE_FIELDS)
     return profile
 
@@ -516,7 +600,7 @@ def update_matches_column(student_id, column_name, new_value):
     """
     Updates a column in matches sheet, returns a status: 200/400/404/500"""
     try:
-        print(f"Updating {column_name} for student {student_id} to {new_value}")
+        # print(f"Updating {column_name} for student {student_id} to {new_value}")
         worksheet = get_sheet("matches")
         headers = worksheet.row_values(1)
         if "student_id" not in headers or column_name not in headers:
@@ -549,12 +633,13 @@ def add_to_recco_student_id(student_id: str, new_students: dict):
         # Get the matches worksheet
         # Get user's row/current recco_student_id value
         # Check if student_id exists
-        print(f"Adding to recco_student_id for student {student_id} with new students {new_students}")
+        # print(f"Adding to recco_student_id for student {student_id} with new students {new_students}")
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
             add_user_result = add_user_matches_row(student_id)
             if add_user_result != 200:
                 return add_user_result
+            user_profile = {}
         current_recco_student_id = user_profile.get("recco_student_id")
         if current_recco_student_id is None or current_recco_student_id == "":
           current_recco_student_id = {}
@@ -578,7 +663,7 @@ def remove_from_recco_student_id(student_id: str, students_to_remove: list):
     students_to_remove (list): A list of student IDs to remove from the recco_student_id column
     """
     try:
-        print(f"Removing from recco_student_id for student {student_id} with students to remove {students_to_remove}")
+        # print(f"Removing from recco_student_id for student {student_id} with students to remove {students_to_remove}")
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
             return 404
@@ -606,7 +691,7 @@ def add_to_accepted_student_id(student_id: str, new_students: list):
     new_students (list): A list of student IDs to add to the accepted_student_id column
     """
     try:
-        print(f"Adding to accepted_student_id for student {student_id} with new students {new_students}")
+        # print(f"Adding to accepted_student_id for student {student_id} with new students {new_students}")
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
             return 404
@@ -634,7 +719,7 @@ def remove_from_accepted_student_id(student_id: str, students_to_remove: list):
     students_to_remove (list): A list of student IDs to remove from the accepted_student_id column
     """
     try:
-        print(f"Removing from accepted_student_id for student {student_id} with students to remove {students_to_remove}")
+        # print(f"Removing from accepted_student_id for student {student_id} with students to remove {students_to_remove}")
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
             return 404
@@ -712,7 +797,7 @@ def add_to_rejected_student_id(student_id: str, new_students: list):
     new_students (list): A list of student IDs to add to the rejected_student_id column
     """
     try:
-        print(f"Adding to rejected_student_id for student {student_id} with new students {new_students}")
+        # print(f"Adding to rejected_student_id for student {student_id} with new students {new_students}")
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
             return 404

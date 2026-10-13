@@ -8,8 +8,8 @@ import groq
 from groq import Groq
 from dotenv import load_dotenv
 
-# Team code. This file sits in the repo root (if you move it into src/, use `from matches import ...`).
-from src.matches import get_accepted_match
+# Team code lives in the Matching package.
+from Matching.matching_logic import get_accepted_students, is_mutual_match
 from database.db import get_profile
 
 logger = logging.getLogger(__name__)
@@ -202,21 +202,16 @@ def _split_ids(value) -> list[str]:
     return [i.strip() for item in value for i in str(item).split(",") if i.strip()]
 
 
-def _accepted_ids(student_id: str) -> list[str]:
-    """IDs this student accepted. matches.py returns {'success': True, 'accepted_student_id': [...]}."""
-    result = get_accepted_match(student_id)
-    if not result.get("success"):
-        logger.error("matchmaking_ai: couldn't read accepted list for %s: %s",
-                     student_id, result.get("error"))
-        return []
-    return _split_ids(result.get("accepted_student_id"))
-
-
 def _mutual_match_ids(user_id: str) -> list[str]:
-    """Students who accepted user_id AND whom user_id accepted."""
-    return [other for other in _accepted_ids(user_id)
-            if other != user_id and user_id in _accepted_ids(other)]
-
+    """Every student user_id accepted who also accepted them back (check done by is_mutual_match)."""
+    accepted = get_accepted_students(user_id)
+    if not accepted["success"]:
+        logger.error("matchmaking_ai: couldn't read accepted list for %s: %s",
+                     user_id, accepted.get("error"))
+        return []
+    candidates = dict.fromkeys(_split_ids(accepted["accepted_student_id"]))   # unique, in order
+    return [other for other in candidates
+            if other != user_id and is_mutual_match(user_id, other)]
 
 def get_matches_for_user(user_id: str) -> list[dict]:
     """MAIN ENTRY POINT: one result dict per mutual match of user_id
@@ -268,7 +263,7 @@ def format_recommendations(result: dict, for_user: str = "a") -> str:
 # ---------- TEMPORARY TEST  ----------
 if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING)   # show any problems in the terminal
-    TEST_STUDENT_ID = "1002"                     # <-- change to a real student ID
+    TEST_STUDENT_ID = "1011"                     # <-- change to a real student ID
 
     results = get_matches_for_user(TEST_STUDENT_ID)
     print(f"\n{TEST_STUDENT_ID} has {len(results)} mutual match(es)\n")

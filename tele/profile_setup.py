@@ -98,7 +98,6 @@ async def prompt_next(update, context):
         state["index"] += 1
     if state["index"] == len(PROFILE_FIELDS):
         profile = state["profile"]
-        profile["traits"] = logic_manager.derive_profile_traits(profile)
         profile["profile_complete"] = logic_manager.is_profile_complete(profile, PROFILE_FIELDS)
         lines = ["Review your profile:"]
         for field in PROFILE_FIELDS:

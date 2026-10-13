@@ -12,6 +12,7 @@ from tele import profile_setup
 
 from database.db import save_user, get_bot_user
 from src.auth import login_user, validate_otp, get_user_info
+from Matching.matching_logic import get_next_user
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR.parent / ".env")
@@ -68,7 +69,7 @@ async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     otp = context.args[1]
     tele_id = get_tele_id(update)
     result = validate_otp(student_id=student_id, otp=otp)
-    print(f"opt res {result}")
+    # print(f"opt res {result}")
     if result == 200:
         save_user(tele_id, student_id)
         context.user_data.pop(profile_setup.STATE_KEY, None)
@@ -109,7 +110,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
       if student_id is None:
           await send_msg(update, "Student ID not found!")
           return
-      print("Getting user info")
+      # print("Getting user info")
       user_result = get_user_info(student_id)
       if user_result is None or user_result.get("status") == 404:
           await send_msg(update, "Error! User details not found")
@@ -121,14 +122,19 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
       btn_list = [[InlineKeyboardButton("Complete / redo profile setup", callback_data="profile_setup")]]
 
-      for key, value in USER_PROFILE_HANDLERS.items():
-          btn_list.append([InlineKeyboardButton(f"Edit {value['label']}", callback_data=f"edit_{key}")])
+      new_row = []
+      for index, (key, value) in enumerate(USER_PROFILE_HANDLERS.items()):
+          if len(new_row) < 2:
+              new_row.append(InlineKeyboardButton(f"Edit {value['label']}", callback_data=f"edit_{key}"))
+              continue
+          btn_list.append(new_row)
+          new_row = []
 
       keyboard = InlineKeyboardMarkup(btn_list)
 
       await update.message.reply_text(reply, reply_markup=keyboard)
     except Exception as e:
-        print(f"Error with /profile: {e}")
+        # print(f"Error with /profile: {e}")
         await send_msg(update, "An Error occurred, contact nmd_002")
 
 async def edit_profile_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -256,14 +262,25 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
     return
 
 async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tele_id = get_tele_id(update)
+    user = get_bot_user(tele_id)
+    if user is None:
+        await send_msg(update, "You are not logged in! Log in using the /login command")
+        return
+    student_id = user["student_id"]
     await send_msg(update, "Finding Matches...")
-    # Get recco_student_id dict
-    # If empty, run function to match users, get new list
-    # If not empty, get student_id with highest score
+    
+    # Get next user
+    # If empty, say ran out of ppl
+    get_next_user_result = get_next_user(student_id)
+    if not get_next_user_result["success"]:
+        return await send_msg(update, f"An error occured: {get_next_user_result["error"]}")
+
+    await send_msg(update, f'Student ID: {get_next_user_result["student_id"]}')
     # Get student profile with student_id
     # Display the student
     # Give options "👍" or "👎"
-    # If 👍, add to accepted student id -> Check if match has user's student_id in accepted_student_id
+    # If 👍, add to accepted student id -> Check if mutual
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile")

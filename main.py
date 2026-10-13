@@ -279,7 +279,7 @@ def main():
                     # Clear fields that no longer apply after this change.
                     for f in fields:
                         if logic_manager.should_skip_field(profile, f):
-                            profile[f["key"]] = [] if f["kind"] == "list" else None
+                            logic_manager.clear_field(profile, f)
 
                     # Ask for any newly required fields.
                     missing = logic_manager.find_missing_fields(profile, PROFILE_FIELDS)

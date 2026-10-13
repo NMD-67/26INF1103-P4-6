@@ -91,10 +91,7 @@ async def prompt_next(update, context):
         field = PROFILE_FIELDS[state["index"]]
         if not logic_manager.should_skip_field(state["profile"], field):
             break
-        if field["kind"] == "list":
-            state["profile"][field["key"]] = []
-        else:
-            state["profile"][field["key"]] = None
+        logic_manager.clear_field(state["profile"], field)
         state["index"] += 1
     if state["index"] == len(PROFILE_FIELDS):
         profile = state["profile"]

@@ -169,7 +169,7 @@ PROFILE_FIELDS = [
     {
         "key": "match_preference",
         "question": "Who would you like to be matched with?",
-        "label": "Match Preference"
+        "label": "Match Preference",
         "section": SECTION_PERSONAL,
         "required": True,
         "kind": "choice",

@@ -182,45 +182,34 @@ def get_compatibility_score(client, main_profile, candidate_profile):
 
 # Compare main user profile with all other profiles and return a sorted list of results
 from database.db import read_profile, get_sheet
+from src.matches import get_rejected_match
 USERS_TAB = "users"
-MATCHES_TAB = "matches"
 
 # Exclude any candidates that this user has already rejected, so we don't re-score them
 def get_rejected_ids(User_ID):
     try:
-        matches_row = read_profile(User_ID, sheet_name=MATCHES_TAB)
-    except ValueError as e:
-        logger.warning(
-            "Cannot read matches row for user %s (duplicate or invalid id): %s",
-            User_ID, e
-        )
-        return set()
+        result = get_rejected_match(User_ID)
     except Exception:
-        logger.exception("Failed to read matches row for user %s", User_ID)
+        logger.exception("Failed to fetch rejected matches for user %s", User_ID)
         return set()
 
-    if matches_row is None:
-        return set()
-
-    raw = matches_row.get("rejected_student_id")
-    if not raw:
-        return set()
-
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError) as e:
+    if not result.get("success"):
         logger.warning(
-            "Could not parse rejected_student_id for user %s: %s", User_ID, e
+            "Could not get rejected matches for user %s: %s",
+            User_ID, result.get("error")
         )
         return set()
 
-    if isinstance(parsed, dict):
-        return {str(k) for k in parsed.keys()}
-    if isinstance(parsed, list):
-        return {str(v) for v in parsed}
+    rejected = result.get("rejected_student_id")
+
+    # Stored as {student_id: score} (or a plain list of ids); normalise to a set of strings
+    if isinstance(rejected, dict):
+        return {str(k) for k in rejected}
+    if isinstance(rejected, (list, set, tuple)):
+        return {str(v) for v in rejected}
 
     logger.warning(
-        "Unexpected rejected_student_id format for user %s: %r", User_ID, parsed
+        "Unexpected rejected_student_id format for user %s: %r", User_ID, rejected
     )
     return set()
 

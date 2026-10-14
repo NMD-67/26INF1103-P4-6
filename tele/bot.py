@@ -262,7 +262,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
     return
 
 async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    loading_message = await send_msg(update, "Finding Matches...")
+    loading_message = await update.message.reply_text("Finding Matches...")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     tele_id = get_tele_id(update)
     user = get_bot_user(tele_id)
     if user is None:
@@ -276,7 +277,7 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not get_next_user_result["success"]:
         return await loading_message.edit_text(f"An error occured: {get_next_user_result["error"]}")
 
-    next_student_id = get_next_user["student_id"]
+    next_student_id = get_next_user("student_id")
 
     get_user_info_response = get_user_info(next_student_id)
     if not get_user_info_response["success"]:

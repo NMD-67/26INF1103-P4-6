@@ -6,7 +6,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import time
 
 import gspread
 import traceback
@@ -36,19 +35,6 @@ def get_sheet(name):
         _worksheets[name] = _spreadsheet.worksheet(name)
     return _worksheets[name]
 
-_profiles_cache = {"data": None, "time": 0}
-CACHE_TTL = 30 #30 Seconds
-
-def read_all_profiles_cached(sheet_name="users", force=False):
-    now = time.time()
-
-    if force or _profiles_cache["data"] is None or now - _profiles_cache["time"] > CACHE_TTL:
-        worksheet = get_sheet(sheet_name)
-        _profiles_cache["data"] = worksheet.get_all_records()
-        _profiles_cache["time"] = now
-    return _profiles_cache["data"]
-    
-
 
 def read_profile(student_id, sheet_name="users"):
     """Read exactly one student ID;
@@ -56,10 +42,20 @@ def read_profile(student_id, sheet_name="users"):
     Return None if missing; 
     
     Return a dict of all columns if found;"""
-    for profile in read_all_profiles_cached(sheet_name=sheet_name):
-        if str(profile.get("student_id")) == str(student_id):
-            return profile
-    return None
+    worksheet = get_sheet(sheet_name)
+    headers = worksheet.row_values(1)
+    column = headers.index("student_id") + 1
+    matches = []
+    for row, value in enumerate(worksheet.col_values(column), start=1):
+        if row > 1 and str(value) == str(student_id):
+            matches.append(row)
+    if len(matches) > 1:
+        raise ValueError("Duplicate student IDs need review")
+    if not matches:
+        return None
+    values = worksheet.row_values(matches[0])
+    values += [""] * (len(headers) - len(values))
+    return dict(zip(headers, values))
 
 
 def safe_json_load(value):

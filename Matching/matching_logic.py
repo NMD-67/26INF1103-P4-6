@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src import matches 
 from src.matches import add_accepted_match, add_rejected_match, get_accepted_match, get_rejected_match
 from database import db
+import profile_matching_AI
 
 VALID_DECISIONS = ("accept", "reject")
 current_match = 0
@@ -348,8 +349,19 @@ def get_next_user(student_id: str):
     #Get user row 
     user_profile_response = db.read_profile(student_id, "matches")
     if user_profile_response is None:
-        return {"success": False, "error": "Profile not found"}
+        user_profile_response = {}
     #TODO: Check if recco is empty, wait for update
+    recco_student_id = user_profile_response.get("recco_student_id")
+    #print(f"recco: {recco_student_id}")
+
+    if isinstance(recco_student_id, str):
+        recco_student_id = json.loads(recco_student_id)
+
+    if not recco_student_id: #Check if current recco_student_id is empty
+        populate_result = profile_matching_AI.populate_recco_list(student_id)
+        if populate_result["status"] != 200:
+            return {"success": False, "error": "Error in finding a match"}
+        recco_student_id = populate_result["reccomendations"]
     
     sorted_recco_id = sort_matches_by_score(user_profile_response["recco_student_id"])
     for student_id, compatability in sorted_recco_id:

@@ -114,21 +114,43 @@ def get_accepted_students(student_id, test_mode=False, users_file="test_users.js
         "accepted_student_id": result.get("accepted_student_id", []),
     }
 
-def is_mutual_match(student_id, target_id):
-    """Return True only when both students accepted each other."""
-    student_id = str(student_id)
-    target_id = str(target_id)
+def is_mutual_match(student_id, target_id, accepted_ids=None):
+    """Check whether both students have accepted each other."""
+    student_id = str(student_id).strip()
+    target_id = str(target_id).strip()
 
-    first = get_accepted_students(student_id)
+    # Read your accepted list only if it was not already provided.
+    if accepted_ids is None:
+        first = get_accepted_students(student_id)
+
+        if not first["success"]:
+            raise RuntimeError(
+                "Could not read your accepted matches. Please try again later."
+            )
+
+        accepted_ids = first["accepted_student_id"]
+
+    accepted_ids = [str(value).strip() for value in accepted_ids]
+
+    # There cannot be a mutual connection if you have not accepted them.
+    if target_id not in accepted_ids:
+        return False
+
+    # Check whether the other student has accepted you.
     second = get_accepted_students(target_id)
 
-    if not first["success"] or not second["success"]:
-        return False
-    print(first["accepted_student_id"], second["accepted_student_id"])
-    return (
-        target_id in first["accepted_student_id"]
-        and student_id in second["accepted_student_id"]
-    )
+    if not second["success"]:
+        raise RuntimeError(
+            "Could not check the other student's accepted matches. "
+            "Please try again later."
+        )
+
+    target_accepted_ids = [
+        str(value).strip()
+        for value in second["accepted_student_id"]
+    ]
+
+    return student_id in target_accepted_ids
 
 def handle_match_decision(student_id, target_id, decision):
     """Main function for the rest of the project to call.
@@ -297,6 +319,8 @@ def record_reject(student_id, target_id):
 
     # If this user had accepted before, Reject should override that choice.
     current = get_accepted_students(decision["student_id"])
+    if not current["success"]:
+        return current
 
     if current["success"] and (
         decision["target_id"] in current["accepted_student_id"]
@@ -351,32 +375,78 @@ def sort_matches_by_score(match_dict):
     return sorted(match_dict.items(), key=lambda x: x[1], reverse=True)
 
 def get_next_user(student_id: str):
-    #Get user row 
-    user_profile_response = db.read_profile(student_id, "matches")
-    if user_profile_response is None:
-        user_profile_response = {}
-    #TODO: Check if recco is empty, wait for update
-    recco_student_id = user_profile_response.get("recco_student_id")
-    #print(f"recco: {recco_student_id}")
+    student_id = str(student_id)
 
-    if isinstance(recco_student_id, str):
-        recco_student_id = json.loads(recco_student_id)
+    user_profile = db.read_profile(student_id, "matches")
 
-    if not recco_student_id: #Check if current recco_student_id is empty
-        populate_result = profile_matching_AI.populate_recco_list(student_id)
-        if populate_result["status"] != 200:
-            return {"success": False, "error": "Error in finding a match"}
-        recco_student_id = populate_result["reccomendations"]
-    
-    sorted_recco_id = sort_matches_by_score(user_profile_response["recco_student_id"])
-    for student_id, compatability in sorted_recco_id:
-        if student_id in user_profile_response["accepted_student_id"] or student_id in user_profile_response["rejected_student_id"]:
+    if user_profile is None:
+        user_profile = {}
+
+    recommendations = user_profile.get("recco_student_id") or {}
+
+    # Convert spreadsheet JSON text into a dictionary.
+    if isinstance(recommendations, str):
+        recommendations = json.loads(recommendations)
+
+    # Generate recommendations if none are saved.
+    if not recommendations:
+        result = profile_matching_AI.populate_recco_list(student_id)
+
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": "Could not generate recommendations. Please try again later."
+            }
+
+        # Reload the record because the AI function saved new recommendations.
+        user_profile = db.read_profile(student_id, "matches")
+
+        if user_profile is None:
+            return {
+                "success": False,
+                "error": "Could not find your matching record."
+            }
+
+        recommendations = user_profile.get("recco_student_id") or {}
+
+        if isinstance(recommendations, str):
+            recommendations = json.loads(recommendations)
+
+    accepted = user_profile.get("accepted_student_id") or []
+    rejected = user_profile.get("rejected_student_id") or []
+
+    if isinstance(accepted, str):
+        accepted = json.loads(accepted)
+
+    if isinstance(rejected, str):
+        rejected = json.loads(rejected)
+
+    accepted = [str(value) for value in accepted]
+    rejected = [str(value) for value in rejected]
+
+    sorted_recommendations = sort_matches_by_score(recommendations)
+
+    for target_id, compatibility in sorted_recommendations:
+        target_id = str(target_id)
+
+        if target_id == student_id:
             continue
-        return {"success": True, "student_id": student_id, "compatability": compatability}
-    return {"success": False, "error": "Out of reccomended students"}
 
-def get_next_match(matches, current_index):
- def get_next_match(match_list, current_index):
+        if target_id in accepted or target_id in rejected:
+            continue
+
+        return {
+            "success": True,
+            "student_id": target_id,
+            "compatability": compatibility
+        }
+
+    return {
+        "success": False,
+        "error": "Out of recommended students."
+    }   
+
+def get_next_match(match_list, current_index):
     """Get the next match from the list of matches."""
     if current_index < len(match_list):
         return match_list[current_index]

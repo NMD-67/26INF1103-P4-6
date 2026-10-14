@@ -210,7 +210,7 @@ def _mutual_match_ids(user_id):
         raise RuntimeError(
             "Could not load your connections from Google Sheets. "
             "Please wait a minute and try again."
-    )
+        )
 
     accepted_ids = list(
         dict.fromkeys(_split_ids(accepted["accepted_student_id"]))

@@ -106,26 +106,17 @@ def main():
                 client = None
 
                 try:
-                    client = profile_matching_AI.get_groq_client()
-                    recommendations = profile_matching_AI.AI_Profile_Matching(
-                        student_id, client
-                    )
+                    result = profile_matching_AI.populate_recco_list(student_id)
+
+                    if not result["success"]:
+                        print(
+                            "Could not generate or save new recommendations. "
+                            "Checking saved recommendations instead."
+                        )
+
                 except Exception as error:
-                    print("Could not generate new recommendations:", error)
-                finally:
-                    if client is not None:
-                        client.close()
-
-                if recommendations:
-                    result = profile_matching_AI.Add_To_Database(
-                        student_id, recommendations
-                    )
-
-                    if result != 200:
-                        print("Could not save new recommendations.")
-                        print("Checking previously saved recommendations instead.")
-                else:
-                    print("No new recommendations. Checking saved recommendations.")
+                    print("Could not refresh recommendations:", error)
+                    print("Checking saved recommendations instead.")
 
                 # Continue to browse saved recommendations.
                 # Load saved recommendations.

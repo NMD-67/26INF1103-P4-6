@@ -352,6 +352,35 @@ def Add_To_Database(User_ID, results):
 
     return outcome
 
+def populate_recco_list(student_id: str):
+  print("Populating Recco list")
+  response = {"success": False, "status": 500, "reccomendations": {}}
+  try:
+    groq_client = get_groq_client()
+
+    reccomendations = AI_Profile_Matching(student_id, groq_client)
+  except Exception as error:
+      print("Could not generate new recommendations:", error)
+  finally:
+    if groq_client is not None:
+        groq_client.close()
+
+  if reccomendations:
+      print("Reccomendations recieved!")
+      add_to_db_result = Add_To_Database(student_id, reccomendations)
+
+      if add_to_db_result != 200:
+          print("Failed to save new reccomendations")
+          return response
+      response["status"] = 200
+      response["success"] = True
+      response["reccomendations": reccomendations]
+      return response
+  else:
+      print("Failed to generate new reccomendations")
+      return response
+
+
 # TESTING
 if __name__ == "__main__":
     USER_ID = 1002  # <-- set the main user to match

@@ -9,6 +9,6 @@ COPY src/ ./src/
 COPY tele/ ./tele/
 COPY database/ ./database/
 COPY Matching/ ./Matching/
-COPY main.py io_manager.py logic_manager.py profile_schema.py ./
+COPY main.py io_manager.py logic_manager.py profile_schema.py profile_matching_AI.py ./
 
 CMD ["python", "-m" , "tele.bot"]

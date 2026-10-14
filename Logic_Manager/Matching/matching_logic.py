@@ -396,8 +396,9 @@ def main(id):
                 break
             else:
                 print("Please type 'accept' or 'reject'.")
-test = load_matches("9000001", test_mode=True)
-print(test)
+if __name__ == "__main__":
+    test = load_matches("9000001", test_mode=True)
+    print(test)
 
 
 # sorted_matches = sort_matches_by_score(test)

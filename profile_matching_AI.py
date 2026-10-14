@@ -189,28 +189,15 @@ USERS_TAB = "users"
 def get_rejected_ids(User_ID):
     try:
         result = get_rejected_match(User_ID)
+        rejected = result.get("rejected_student_id") if result.get("success") else None
     except Exception:
         logger.exception("Failed to fetch rejected matches for user %s", User_ID)
-        return set()
+        rejected = None
 
-    if not result.get("success"):
-        logger.warning(
-            "Could not get rejected matches for user %s: %s",
-            User_ID, result.get("error")
-        )
-        return set()
-
-    rejected = result.get("rejected_student_id")
-
-    # Stored as {student_id: score} (or a plain list of ids); normalise to a set of strings
-    if isinstance(rejected, dict):
-        return {str(k) for k in rejected}
-    if isinstance(rejected, (list, set, tuple)):
-        return {str(v) for v in rejected}
-
-    logger.warning(
-        "Unexpected rejected_student_id format for user %s: %r", User_ID, rejected
-    )
+    if rejected:
+        # Has rejections -> exclude them (works for {id: score} dicts and lists of ids)
+        return {str(r) for r in rejected}
+    # New user / no rejections / lookup failed -> exclude nobody
     return set()
 
 # Returns a list of {"user_id", "name", "score"} sorted by score (highest first). Returns [] if no candidates or an error occurred.
@@ -342,37 +329,44 @@ def Add_To_Database(User_ID, results):
     return outcome
 
 def populate_recco_list(student_id: str):
-  print("Populating Recco list")
-  response = {"success": False, "status": 500, "reccomendations": {}}
-  try:
-    groq_client = get_groq_client()
+    print("Populating Recco list")
+    response = {"success": False, "status": 500, "reccomendations": {}}
 
-    reccomendations = AI_Profile_Matching(student_id, groq_client)
-  except Exception as error:
-      print("Could not generate new recommendations:", error)
-  finally:
-    if groq_client is not None:
-        groq_client.close()
+    groq_client = None
+    reccomendations = []
+    try:
+        groq_client = get_groq_client()
+        reccomendations = AI_Profile_Matching(student_id, groq_client)
+    except Exception as error:
+        print("Could not generate new recommendations:", error)
+    finally:
+        if groq_client is not None:
+            groq_client.close()
 
-  if reccomendations:
-      print("Reccomendations recieved!")
-      add_to_db_result = Add_To_Database(student_id, reccomendations)
+    if not reccomendations:
+        print("Failed to generate new reccomendations")
+        return response
 
-      if add_to_db_result != 200:
-          print("Failed to save new reccomendations")
-          return response
-      response["status"] = 200
-      response["success"] = True
-      response["reccomendations": reccomendations]
-      return response
-  else:
-      print("Failed to generate new reccomendations")
-      return response
+    print("Reccomendations recieved!")
+    add_to_db_result = Add_To_Database(student_id, reccomendations)
+
+    # Accept either a plain 200 or a {"success": True} dict from the DB layer
+    saved = add_to_db_result == 200 or (
+        isinstance(add_to_db_result, dict) and add_to_db_result.get("success")
+    )
+    if not saved:
+        print("Failed to save new reccomendations")
+        return response
+
+    response["status"] = 200
+    response["success"] = True
+    response["reccomendations"] = reccomendations
+    return response
 
 
 # TESTING
 if __name__ == "__main__":
-    USER_ID = 1002  # <-- set the main user to match
+    USER_ID = 2403007  # <-- set the main user to match
 
     groq_client = get_groq_client()
     results = AI_Profile_Matching(USER_ID, groq_client)

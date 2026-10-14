@@ -11,7 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src import matches 
 from src.matches import add_accepted_match, add_rejected_match, get_accepted_match, get_rejected_match
-from database import db
+from Data_Manager.database import db
 
 
 

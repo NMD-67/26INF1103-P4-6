@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 *.egg-info
 database/service_account.json
+Data_Manager/database/service_account.json

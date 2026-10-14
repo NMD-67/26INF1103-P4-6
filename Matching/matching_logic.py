@@ -1,22 +1,37 @@
 import json
+from re import match
 import sys
 import os
 
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+TEST_USERS_FILE = os.path.join(BASE_DIR, "test_users.json")
+TEST_AI_FILE = os.path.join(BASE_DIR, "test_ai_output.json")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from src import matches 
 from src.matches import add_accepted_match, add_rejected_match, get_accepted_match, get_rejected_match
 from database import db
-import profile_matching_AI
+
+
 
 VALID_DECISIONS = ("accept", "reject")
 current_match = 0
 
-def load_matches(id):
-    recco_ids = db.get_user_recco_student_id(id)
+def load_json_file(file_path):
+    with open(file_path, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+def load_matches(id, test_mode=False, ai_file=TEST_AI_FILE):
+    if test_mode:
+        ai_data = load_json_file(ai_file)
+        recco_ids = ai_data.get(str(id))
+    else:
+        recco_ids = db.get_user_recco_student_id(id)
 
     if not isinstance(recco_ids, dict) or not recco_ids.get("success"):
         return None
-
+    
     recommended = recco_ids.get("recco_student_id", {})
 
     accepted_result = get_accepted_match(id)
@@ -41,7 +56,6 @@ def load_matches(id):
 
     return filtered_matches
 
-
 def compatibility_label(score):
     """Convert a compatibility score into the team's score band."""
     try:
@@ -53,30 +67,34 @@ def compatibility_label(score):
         return None
 
     if score >= 85:
-        return "High Compatibility ✨"
+        return "High Compatibility"
     if score >= 70:
-        return "Moderate Compatibility 🔥"
-    return "Low Compatibility 🤔"
+        return "Moderate Compatibility"
+    return "Low Compatibility"
 
-def show_next_match(recommendations):
+def show_next_match(match_dict):
     global current_match
 
-    item = get_next_match(recommendations, current_match)
-
-    if item is None:
+    if current_match >= len(match_dict):
         return False
 
-    student_id, score = item
+    student_id, compatibility = list(match_dict.items())[current_match]
     current_match += 1
-
-    profile = db.get_profile(student_id)
-    return profile, score
+    target_id = matches.read_profile(student_id, sheet_name="users")
+    return target_id, compatibility
 
 def check_user_decision(decision):
     return decision.lower() in VALID_DECISIONS
 
-def get_accepted_students(student_id):
-    """Read one student's accepted list through matches.py."""
+def get_accepted_students(student_id, test_mode=False, users_file="test_users.json"):
+    if test_mode:
+        users_data = load_json_file(users_file)
+        accepted = users_data.get("accepted_matches", {}).get(str(student_id), [])
+        return {
+            "success": True,
+            "accepted_student_id": accepted,
+        }
+
     result = matches.get_accepted_match(str(student_id))
 
     if not isinstance(result, dict) or not result.get("success"):
@@ -90,47 +108,26 @@ def get_accepted_students(student_id):
             ),
         }
 
-    accepted = result.get("accepted_student_id")
-
     return {
         "success": True,
-        "accepted_student_id": accepted,
+        "accepted_student_id": result.get("accepted_student_id", []),
     }
-def _clean_ids(value):
-    """Turn a stored accepted list into clean ID strings.
-    Handles ['1013', '1002'] and also packed cells like ['1013, 1002, 1009']."""
-    if not isinstance(value, (list, tuple)):
-        value = [value or ""]
-    return [i.strip() for item in value for i in str(item).split(",") if i.strip()]
 
-
-def is_mutual_match(student_id, target_id, accepted_ids=None):
+def is_mutual_match(student_id, target_id):
+    """Return True only when both students accepted each other."""
     student_id = str(student_id)
     target_id = str(target_id)
 
-    # Read your accepted list only if the caller hasn't supplied it.
-    if accepted_ids is None:
-        first = get_accepted_students(student_id)
-
-        if not first["success"]:
-            raise RuntimeError(
-                "Could not read your accepted matches. Please try again later."
-            )
-
-        accepted_ids = _clean_ids(first["accepted_student_id"])
-
-    if target_id not in accepted_ids:
-        return False
-
+    first = get_accepted_students(student_id)
     second = get_accepted_students(target_id)
 
-    if not second["success"]:
-        raise RuntimeError(
-            f"Could not check student {target_id}: "
-            f"{second.get('error', 'Unknown error')}"
-        )
-
-    return student_id in _clean_ids(second["accepted_student_id"])
+    if not first["success"] or not second["success"]:
+        return False
+    print(first["accepted_student_id"], second["accepted_student_id"])
+    return (
+        target_id in first["accepted_student_id"]
+        and student_id in second["accepted_student_id"]
+    )
 
 def handle_match_decision(student_id, target_id, decision):
     """Main function for the rest of the project to call.
@@ -349,45 +346,13 @@ def record_reject(student_id, target_id):
     }
 
 def sort_matches_by_score(match_dict):
-    # Convert spreadsheet text into a Python dictionary.
-    if isinstance(match_dict, str):
-        match_dict = json.loads(match_dict or "{}")
+    """Sort matches by score in descending order."""
+    return sorted(match_dict.items(), key=lambda x: x[1], reverse=True)
 
-    return sorted(
-        match_dict.items(),
-        key=lambda item: int(item[1]),
-        reverse=True,
-    )
-
-def get_next_user(student_id: str):
-    #Get user row 
-    user_profile_response = db.read_profile(student_id, "matches")
-    if user_profile_response is None:
-        user_profile_response = {}
-    #TODO: Check if recco is empty, wait for update
-    recco_student_id = user_profile_response.get("recco_student_id")
-    #print(f"recco: {recco_student_id}")
-
-    if isinstance(recco_student_id, str):
-        recco_student_id = json.loads(recco_student_id)
-
-    if not recco_student_id: #Check if current recco_student_id is empty
-        populate_result = profile_matching_AI.populate_recco_list(student_id)
-        if populate_result["status"] != 200:
-            return {"success": False, "error": "Error in finding a match"}
-        recco_student_id = populate_result["reccomendations"]
-    
-    sorted_recco_id = sort_matches_by_score(user_profile_response["recco_student_id"])
-    for student_id, compatability in sorted_recco_id:
-        if student_id in user_profile_response["accepted_student_id"] or student_id in user_profile_response["rejected_student_id"]:
-            continue
-        return {"success": True, "student_id": student_id, "compatability": compatability}
-    return {"success": False, "error": "Out of reccomended students"}
-
-def get_next_match(matches, current_index):
+def get_next_match(match_list, current_index):
     """Get the next match from the list of matches."""
-    if current_index < len(matches):
-        return matches[current_index]
+    if current_index < len(match_list):
+        return match_list[current_index]
     return None
 
 # ===== testing space :) ======
@@ -431,7 +396,10 @@ def main(id):
                 break
             else:
                 print("Please type 'accept' or 'reject'.")
-if __name__ == "__main__":
-    test = load_matches("1001")
-    if test:
-        print(sort_matches_by_score(test))
+test = load_matches("9000001", test_mode=True)
+print(test)
+
+
+# sorted_matches = sort_matches_by_score(test)
+# print(sorted_matches)
+

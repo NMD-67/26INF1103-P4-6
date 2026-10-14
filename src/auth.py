@@ -86,7 +86,7 @@ def get_user_info(student_id):
   Returns an object {
   success: bool,
   error: str,
-  user: List
+  user: Dict
   }
   """
   # Retrieve user information based on the student_id

@@ -64,11 +64,14 @@ def safe_json_load(value):
         return json.dumps(value)
     return value
 
+_header_cache = {}
+
 def get_header_values(sheet: gspread.Worksheet):
     """
     Returns an array of header values"""
-    headers = sheet.row_values(1)
-    return headers
+    if sheet.id not in _header_cache:
+        _header_cache[sheet.id] = sheet.row_values(1)
+    return _header_cache[sheet.id]
 
 def column_name_exists(worksheet, column_name):
     """

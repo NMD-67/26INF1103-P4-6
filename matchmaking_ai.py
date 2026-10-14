@@ -201,17 +201,31 @@ def _split_ids(value) -> list[str]:
         value = [value or ""]
     return [i.strip() for item in value for i in str(item).split(",") if i.strip()]
 
-
-def _mutual_match_ids(user_id: str) -> list[str]:
-    """Every student user_id accepted who also accepted them back (check done by is_mutual_match)."""
+def _mutual_match_ids(user_id):
     accepted = get_accepted_students(user_id)
+
     if not accepted["success"]:
         logger.error("matchmaking_ai: couldn't read accepted list for %s: %s",
                      user_id, accepted.get("error"))
-        return []
-    candidates = dict.fromkeys(_split_ids(accepted["accepted_student_id"]))   # unique, in order
-    return [other for other in candidates
-            if other != user_id and is_mutual_match(user_id, other)]
+        raise RuntimeError(
+            "Could not load your connections from Google Sheets. "
+            "Please wait a minute and try again."
+    )
+
+    accepted_ids = list(
+        dict.fromkeys(_split_ids(accepted["accepted_student_id"]))
+    )
+
+    mutual_ids = []
+
+    for other_id in accepted_ids:
+        if other_id == user_id:
+            continue
+
+        if is_mutual_match(user_id, other_id, accepted_ids):
+            mutual_ids.append(other_id)
+
+    return mutual_ids
 
 def prepare_connection(profile_a, profile_b):
     result = generate_suggestions(profile_a, profile_b)

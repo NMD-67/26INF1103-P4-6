@@ -262,21 +262,29 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
     return
 
 async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    loading_message = await send_msg(update, "Finding Matches...")
     tele_id = get_tele_id(update)
     user = get_bot_user(tele_id)
     if user is None:
-        await send_msg(update, "You are not logged in! Log in using the /login command")
+        await loading_message.edit_text("You are not logged in! Log in using the /login command")
         return
     student_id = user["student_id"]
-    await send_msg(update, "Finding Matches...")
     
     # Get next user
     # If empty, say ran out of ppl
     get_next_user_result = get_next_user(student_id)
     if not get_next_user_result["success"]:
-        return await send_msg(update, f"An error occured: {get_next_user_result["error"]}")
+        return await loading_message.edit_text(f"An error occured: {get_next_user_result["error"]}")
 
-    await send_msg(update, f'Student ID: {get_next_user_result["student_id"]}')
+    next_student_id = get_next_user["student_id"]
+
+    get_user_info_response = get_user_info(next_student_id)
+    if not get_user_info_response["success"]:
+        return loading_message.edit_text("An error occured when getting data on student")
+
+    user = get_user_info_response["user"]
+    user_profile = f"Name: {user["name"]}"
+    await loading_message.edit_text(user_profile)
     # Get student profile with student_id
     # Display the student
     # Give options "👍" or "👎"

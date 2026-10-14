@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY AI_Manager/ ./AI_Manager/
+COPY Data_Manager/ ./Data_Manager/
+COPY IO_Manager/ ./IO_Manager/
+COPY Logic_Manager/ ./Logic_Manager/
+COPY src/ ./src/
+
+COPY main.py automated_test_script.py ./
+
+CMD ["python", "main.py"]

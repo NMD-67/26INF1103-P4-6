@@ -9,6 +9,7 @@ TEST_USERS_FILE = os.path.join(BASE_DIR, "test_users.json")
 TEST_AI_FILE = os.path.join(BASE_DIR, "test_ai_output.json")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from AI_Manager import profile_matching_AI
 from src import matches 
 from src.matches import add_accepted_match, add_rejected_match, get_accepted_match, get_rejected_match
 from Data_Manager.database import db
@@ -349,7 +350,33 @@ def sort_matches_by_score(match_dict):
     """Sort matches by score in descending order."""
     return sorted(match_dict.items(), key=lambda x: x[1], reverse=True)
 
-def get_next_match(match_list, current_index):
+def get_next_user(student_id: str):
+    #Get user row 
+    user_profile_response = db.read_profile(student_id, "matches")
+    if user_profile_response is None:
+        user_profile_response = {}
+    #TODO: Check if recco is empty, wait for update
+    recco_student_id = user_profile_response.get("recco_student_id")
+    #print(f"recco: {recco_student_id}")
+
+    if isinstance(recco_student_id, str):
+        recco_student_id = json.loads(recco_student_id)
+
+    if not recco_student_id: #Check if current recco_student_id is empty
+        populate_result = profile_matching_AI.populate_recco_list(student_id)
+        if populate_result["status"] != 200:
+            return {"success": False, "error": "Error in finding a match"}
+        recco_student_id = populate_result["reccomendations"]
+    
+    sorted_recco_id = sort_matches_by_score(user_profile_response["recco_student_id"])
+    for student_id, compatability in sorted_recco_id:
+        if student_id in user_profile_response["accepted_student_id"] or student_id in user_profile_response["rejected_student_id"]:
+            continue
+        return {"success": True, "student_id": student_id, "compatability": compatability}
+    return {"success": False, "error": "Out of reccomended students"}
+
+def get_next_match(matches, current_index):
+ def get_next_match(match_list, current_index):
     """Get the next match from the list of matches."""
     if current_index < len(match_list):
         return match_list[current_index]

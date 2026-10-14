@@ -1,7 +1,7 @@
 # The auth handler for our app; responsible for handling user auth actions
 
 from src.email import send_email
-from database.db import *
+from Data_Manager.database.db import *
 import random
 
 def is_valid_student_id(student_id):

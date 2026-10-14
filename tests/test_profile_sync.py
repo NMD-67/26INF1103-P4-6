@@ -5,10 +5,10 @@ from types import ModuleType
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from database import db
-import io_manager
+from Data_Manager.database import db
+from IO_Manager import io_manager
 import main
-from profile_schema import PROFILE_FIELDS
+from IO_Manager.profile_schema import PROFILE_FIELDS
 
 
 def run_checks():

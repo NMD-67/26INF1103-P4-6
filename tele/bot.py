@@ -6,13 +6,13 @@ import os
 import asyncio
 import secrets
 from telegram.error import TelegramError
-import io_manager
-from database import db
+from IO_Manager import io_manager
+from Data_Manager.database import db
 from tele import profile_setup
 
-from database.db import save_user, get_bot_user
+from Data_Manager.database.db import save_user, get_bot_user
 from src.auth import login_user, validate_otp, get_user_info
-from Matching.matching_logic import get_next_user
+from Logic_Manager.Matching.matching_logic import get_next_user
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR.parent / ".env")

@@ -4,16 +4,16 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-from database import db
+from Data_Manager.database import db
 from src import matches
 from src import auth
-from Matching import matching_logic
-from profile_schema import PROFILE_FIELDS
+from Logic_Manager.Matching import matching_logic
+from IO_Manager.profile_schema import PROFILE_FIELDS
 
-import io_manager
-import logic_manager
-import profile_matching_AI
-import matchmaking_ai
+from IO_Manager import io_manager
+from Logic_Manager import logic_manager
+from AI_Manager import profile_matching_AI
+from AI_Manager import matchmaking_ai
 
 
 def main():

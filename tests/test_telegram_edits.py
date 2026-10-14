@@ -7,7 +7,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import io_manager
+from IO_Manager import io_manager
 
 # Stub service modules before importing bot.py: never read credentials or contact APIs.
 db = ModuleType("database.db")

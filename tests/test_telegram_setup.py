@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import io_manager
+from IO_Manager import io_manager
 from tele import profile_setup as form
 
 

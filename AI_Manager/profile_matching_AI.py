@@ -181,7 +181,7 @@ def get_compatibility_score(client, main_profile, candidate_profile):
     return None
 
 # Compare main user profile with all other profiles and return a sorted list of results
-from database.db import read_profile, get_sheet
+from Data_Manager.database.db import read_profile, get_sheet
 from src.matches import get_rejected_match
 USERS_TAB = "users"
 
@@ -290,7 +290,7 @@ def AI_Profile_Matching(User_ID, groq_client):
     return results
 
 # Append to recco_student_id
-from database.db import add_to_recco_student_id
+from Data_Manager.database.db import add_to_recco_student_id
 
 def Add_To_Database(User_ID, results):
     """Returns the DB outcome, or None if nothing was saved. Never raises."""

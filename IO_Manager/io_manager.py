@@ -1,9 +1,9 @@
 """Terminal questions and output, plus answer validation shared with Telegram."""
 from datetime import date
-from profile_schema import PROFILE_FIELDS
+from IO_Manager.profile_schema import PROFILE_FIELDS
 from src import auth
 
-import logic_manager
+from Logic_Manager import logic_manager
 
 MIN_AGE = 18
 MAX_AGE = 30

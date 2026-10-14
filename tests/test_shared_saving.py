@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from database import db
-import io_manager
-from profile_schema import PROFILE_FIELDS
+from Data_Manager.database import db
+from IO_Manager import io_manager
+from IO_Manager.profile_schema import PROFILE_FIELDS
 
 
 def run_checks():

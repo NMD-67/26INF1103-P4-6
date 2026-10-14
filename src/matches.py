@@ -1,4 +1,4 @@
-from database.db import *
+from Data_Manager.database.db import *
 
 def add_recco_student_id(student_id, new_students):
     """

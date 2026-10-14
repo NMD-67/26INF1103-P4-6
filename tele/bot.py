@@ -287,12 +287,34 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return await loading_message.edit_text("An error occured when getting data on student")
 
     user = get_user_info_response["user"]
-    user_profile = f"Name: {user["name"]}"
-    await loading_message.edit_text(user_profile)
+    user_profile = ""
+    for field in [
+        "name", "year", "course", "bio", "here_for", "hobbies"
+    ]:
+        if user[field]:
+            user_profile += f"{io_manager.profile_label(field)}: {user[field]}\n"
+    
+    #TODO: Handle accept/reject
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👍", callback_data=f"accept_{next_student_id}"), InlineKeyboardButton("👎", callback_data=f"reject_{next_student_id}")],
+    ])
+
+    await loading_message.edit_text(user_profile, reply_markup=keyboard)
     # Get student profile with student_id
     # Display the student
     # Give options "👍" or "👎"
     # If 👍, add to accepted student id -> Check if mutual
+
+async def user_accept_handler(update: Update, ContextType: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer
+
+    match_id = query.data.split("_", 1)[1]
+
+
+
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.message.reply_text(f"Rejected")
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile")
@@ -331,6 +353,7 @@ def run_bot():
     app.add_handler(CallbackQueryHandler(profile_setup.menu_choice, pattern=r"^form:"))
     app.add_handler(CallbackQueryHandler(edit_option_handler, pattern=r"^editpick:"))
     app.add_handler(CallbackQueryHandler(edit_profile_button_handler, pattern=r"^(profile_setup|edit_.*)$"))
+    app.add_handler(CallbackQueryHandler(user_accept_handler, pattern=r"^accept_"))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     io_manager.show("Starting the bot...")

@@ -207,6 +207,10 @@ def _mutual_match_ids(user_id):
     if not accepted["success"]:
         logger.error("matchmaking_ai: couldn't read accepted list for %s: %s",
                      user_id, accepted.get("error"))
+        raise RuntimeError(
+            "Could not load your connections from Google Sheets. "
+            "Please wait a minute and try again."
+    )
 
     accepted_ids = list(
         dict.fromkeys(_split_ids(accepted["accepted_student_id"]))

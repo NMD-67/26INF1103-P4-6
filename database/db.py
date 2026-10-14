@@ -753,7 +753,11 @@ def get_accepted_student_id(student_id: str):
     try:
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
-            return {"success": False, "error": f"Student ID {student_id} not found", "accepted_student_id": []}
+                return {
+                    "success": True,
+                    "error": None,
+                    "accepted_student_id": []
+                }
         current_accepted_student_id = user_profile.get("accepted_student_id")
         if current_accepted_student_id is None or current_accepted_student_id == "":
             return {"success": True, "error": None, "accepted_student_id": []}

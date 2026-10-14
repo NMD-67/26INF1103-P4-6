@@ -126,7 +126,8 @@ def is_mutual_match(student_id, target_id, accepted_ids=None):
 
     if not second["success"]:
         raise RuntimeError(
-            "Could not check a connection. Please try again later."
+            f"Could not check student {target_id}: "
+            f"{second.get('error', 'Unknown error')}"
         )
 
     return student_id in _clean_ids(second["accepted_student_id"])

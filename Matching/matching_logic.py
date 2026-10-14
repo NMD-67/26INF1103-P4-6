@@ -102,20 +102,33 @@ def _clean_ids(value):
         value = [value or ""]
     return [i.strip() for item in value for i in str(item).split(",") if i.strip()]
 
-def is_mutual_match(student_id, target_id):
-    """Return True only when both students accepted each other."""
+
+def is_mutual_match(student_id, target_id, accepted_ids=None):
     student_id = str(student_id)
     target_id = str(target_id)
 
-    first = get_accepted_students(student_id)
+    # Read your accepted list only if the caller hasn't supplied it.
+    if accepted_ids is None:
+        first = get_accepted_students(student_id)
+
+        if not first["success"]:
+            raise RuntimeError(
+                "Could not read your accepted matches. Please try again later."
+            )
+
+        accepted_ids = _clean_ids(first["accepted_student_id"])
+
+    if target_id not in accepted_ids:
+        return False
+
     second = get_accepted_students(target_id)
 
-    if not first["success"] or not second["success"]:
-        return False
-    return (
-        target_id in _clean_ids(first["accepted_student_id"])
-        and student_id in _clean_ids(second["accepted_student_id"])
-    )
+    if not second["success"]:
+        raise RuntimeError(
+            "Could not check a connection. Please try again later."
+        )
+
+    return student_id in _clean_ids(second["accepted_student_id"])
 
 def handle_match_decision(student_id, target_id, decision):
     """Main function for the rest of the project to call.

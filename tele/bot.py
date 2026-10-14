@@ -277,11 +277,14 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not get_next_user_result["success"]:
         return await loading_message.edit_text(f"An error occured: {get_next_user_result["error"]}")
 
-    next_student_id = get_next_user("student_id")
+    next_user_response = get_next_user(student_id)
+    if not next_user_response["success"]:
+        return await loading_message.edit_text("Error in finding next student")
+    next_student_id = next_user_response["student_id"]
 
     get_user_info_response = get_user_info(next_student_id)
     if not get_user_info_response["success"]:
-        return loading_message.edit_text("An error occured when getting data on student")
+        return await loading_message.edit_text("An error occured when getting data on student")
 
     user = get_user_info_response["user"]
     user_profile = f"Name: {user["name"]}"

@@ -5,4 +5,6 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    volumes:
+      - ./Data_Manager/database/service_account.json:/app/Data_Manager/database/service_account.json:ro
     restart: unless-stopped

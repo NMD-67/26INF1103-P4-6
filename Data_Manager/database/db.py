@@ -6,11 +6,13 @@ import json
 import logging
 import os
 from pathlib import Path
-
-import gspread
 import traceback
 from Logic_Manager import logic_manager
 from IO_Manager.profile_schema import PROFILE_FIELDS
+
+from supabase import create_client
+
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_API_KEY"])
 
 logger = logging.getLogger(__name__)
 SERVICE_ACCOUNT_FILE = Path(__file__).resolve().parent / "service_account.json"
@@ -159,27 +161,45 @@ def convert_list_to_dict(headers, values):
 # ---OTP Functions---
 def upload_otp(student_id, otp):
     try:
-      current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-      row = [student_id, otp, current_datetime]
-      get_sheet("otp").append_row(row)
-      return 200
+        supabase.table("otp").insert(
+            {"student_id": student_id, "otp": otp}
+        ).execute()
+        return 200
     except Exception as e:
         print(f"An error occured when creating otp: {e}")
+        logger.warning(f"Error: {e}")
         return 500
+
+# def get_otp(student_id):
+#     try:
+#       user_row_number = get_row_numbers_by_column_name(get_sheet("otp"), "student_id", student_id)
+#       #print(f"User row number: {user_row_number}")
+#       if not user_row_number["success"]:
+#           return 500
+#       user_row = get_row_values(get_sheet("otp"), user_row_number["rows"])
+#       if user_row is None or len(user_row) < 1:
+#           return 404
+#       #print(user_row)
+#       return {"row_numbers": user_row_number["rows"], "otp": user_row[0]["otp"]}
+#     except Exception as e:
+#         print(f"An error occured when checking otp: {e}")
+#         return 500
 
 def get_otp(student_id):
     try:
-      user_row_number = get_row_numbers_by_column_name(get_sheet("otp"), "student_id", student_id)
-      #print(f"User row number: {user_row_number}")
-      if not user_row_number["success"]:
-          return 500
-      user_row = get_row_values(get_sheet("otp"), user_row_number["rows"])
-      if user_row is None or len(user_row) < 1:
-          return 404
-      #print(user_row)
-      return {"row_numbers": user_row_number["rows"], "otp": user_row[0]["otp"]}
+        get_otp_response = (
+            supabase.table("otp")
+            .select("otp")
+            .eq("student_id", student_id)
+            .execute()
+        )
+        rows = get_otp_response.data
+        otp = rows[0]["otp"]
+
+        logger.warning(f"Rows: {rows}")
+        return 200
     except Exception as e:
-        print(f"An error occured when checking otp: {e}")
+        logger.warning(f"Error in getting otp: {e}")
         return 500
 
 def delete_otp(row_numbers):

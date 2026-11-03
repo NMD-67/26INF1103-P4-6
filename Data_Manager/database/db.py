@@ -4,7 +4,6 @@ import os
 import datetime
 import json
 import logging
-import os
 from pathlib import Path
 import traceback
 from Logic_Manager import logic_manager

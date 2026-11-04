@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 @dataclass
 class User:
@@ -20,7 +20,14 @@ class User:
   hobbies: list[str] = None
   interest_groups: list[str] = None
   deal_breakers: list[dict] = None
-  __tele_handle: str = None
+  tele_handle: str = None
+
+  @classmethod
+  def from_dict(cls, data: dict):
+    class_fields = {field.name for field in fields(cls)}
+    return cls(
+      **{key: value for key, value in data.items() if key in class_fields}
+    )
 
   def get_user_details(self):
     user_obj = {}
@@ -29,6 +36,11 @@ class User:
         continue
       user_obj[attr] = value
     return user_obj
+
+  def print_user_details(self):
+    user_obj = self.get_user_details()
+    for attr, value in user_obj.items():
+      print(f"{attr}: {value}")
 
 
   

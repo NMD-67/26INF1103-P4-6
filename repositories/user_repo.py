@@ -2,17 +2,26 @@
 
 from psycopg_pool import ConnectionPool
 from psycopg.errors import UniqueViolation
+from psycopg import sql
 from exceptions.duplicate_student_id import DuplicateStudentIdException
 from models.user import User
-
+from config.user_fields import USER_FIELD_CONFIG
 
 class UserRepo:
   """Repository class for user-related database operations"""
   def __init__(self, pool: ConnectionPool):
     self.pool = pool
 
+  def _get_array_tables(self) -> list[str]:
+    """Get a list of tables that store array data for users"""
+    array_tables = []
+    for key, value in USER_FIELD_CONFIG.items():
+      if value["storage"] != "users":
+        array_tables.append(value["storage"])
+    return array_tables
+
   def create(self, user: User) -> User:
-    """Create a new user in the database"""
+    """Create a new user in the database."""
     try:
       with self.pool.connection() as conn:
         row = conn.execute(
@@ -24,8 +33,9 @@ class UserRepo:
           (user.student_id,)
           ).fetchone()
 
+        print(f"Row returned from INSERT: {row}")  # Debugging statement
         return User(
-          student_id=row[0]
+          student_id=row["student_id"]
         )
     except UniqueViolation as error:
       if error.diag.constraint_name == "users_student_id_key":
@@ -33,13 +43,17 @@ class UserRepo:
       raise
 
   def update(self, student_id: str, fields: dict) -> bool:
+    """Update user details in the database. Accepts a User object, which will be treated as the final version of the user. Returns the created User object."""
     if not fields:
       return False
 
-    #TODO: Add fields varification (Ensure fields are valid and can be edited)
+    array_fields = {field: value for field, value in fields.items() if field in USER_FIELD_CONFIG and USER_FIELD_CONFIG[field]["storage"] != "users"}
+
     assignments = ", ".join(
-      f"{field} = %s" for field in fields
+      f"{field} = %s" for field in fields if field in USER_FIELD_CONFIG and field != "student_id" and USER_FIELD_CONFIG[field]["storage"] == "users" and USER_FIELD_CONFIG[field]["editable"]
     )
+
+    print("Assignments:", assignments)  # Debugging statement
 
     values = list(fields.values()) + [student_id]
 
@@ -51,7 +65,34 @@ class UserRepo:
     """
 
     with self.pool.connection() as conn:
-      result = conn.execute(query, values).fetchone()
+      if assignments:
+        result = conn.execute(query, values).fetchone()
+
+      for field in array_fields:
+        # delete fields that are not in the new list
+        values = list(dict.fromkeys(fields[field]))  # Remove duplicates while preserving order
+        table_name = USER_FIELD_CONFIG[field]["storage"]
+        column_name = USER_FIELD_CONFIG[field]["column_name"]
+        print(f"Deleting from {table_name} where student_id = {student_id} and {column_name} not in {array_fields[field]}")  # Debugging statement
+        conn.execute(
+          f"""
+          DELETE FROM {table_name}
+          WHERE student_id = %s AND NOT({column_name} = ANY(%s))
+          """,
+          (student_id, values)  
+        )
+
+        # insert new fields that are not in the old list
+        print(f"Inserting into {table_name} for student_id = {student_id} with values = {array_fields[field]}")  # Debugging statement
+        result = conn.execute(
+          f"""
+          INSERT INTO {table_name} (student_id, {column_name})
+          SELECT %s, unnest(%s::text[])
+          ON CONFLICT (student_id, {column_name}) DO NOTHING
+          RETURNING student_id
+          """,
+          (student_id, array_fields[field])
+        )
 
       return result is not None
 
@@ -69,6 +110,36 @@ class UserRepo:
       if not row:
         return None
 
-      return User(
-        student_id=row[0]
-      )
+      array_tables = self._get_array_tables()
+
+      for table in array_tables:
+        column_name = USER_FIELD_CONFIG[next(key for key, value in USER_FIELD_CONFIG.items() if value["storage"] == table)]["column_name"]
+        array_result = conn.execute(
+          f"""
+          SELECT *
+          FROM {table}
+          WHERE student_id = %s
+          """,
+          (student_id,)
+        )
+        array_row = array_result.fetchall()
+        print(f"Retrieved array data from table: {table}: {array_row}")  # Debugging statement
+        if array_row:
+          row[table] = [item[column_name] for item in array_row]
+
+      print(f"Retrieved user details: {row}")  # Debugging statement
+
+      return User.from_dict(dict(row))
+
+  def delete(self, student_id: str) -> bool:
+    with self.pool.connection() as conn:
+      result = conn.execute(
+        """
+        DELETE FROM users
+        WHERE student_id = %s
+        RETURNING student_id
+        """,
+        (student_id,)
+      ).fetchone()
+
+      return result is not None

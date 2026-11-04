@@ -64,26 +64,30 @@ USER_FIELD_CONFIG = {
   "ccas": {
     "editable": True,
     "storage": "ccas",
-    "type": "list"
+    "type": "list",
+    "column_name": "cca"
   },
   "events": {
     "editable": True,
     "storage": "events",
-    "type": "list"
+    "type": "list",
+    "column_name": "event"
   },
   "hobbies": {
     "editable": True,
     "storage": "hobbies",
-    "type": "list"
+    "type": "list",
+    "column_name": "hobby"
   },
-  "interest_groups": {
+  "interests": {
     "editable": True,
-    "storage": "interest_groups",
-    "type": "list"
+    "storage": "interests",
+    "type": "list",
+    "column_name": "interest"
   },
   "tele_handle": {
     "editable": True,
     "storage": "users",
     "type": "str"
   },
-}
+} # TODO: Clint to add schema onto this config file

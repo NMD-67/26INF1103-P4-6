@@ -3,6 +3,7 @@ import logging
 from psycopg_pool import ConnectionPool
 from dotenv import load_dotenv
 from pathlib import Path
+from psycopg.rows import dict_row
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env")
 
@@ -20,7 +21,7 @@ def create_connection_pool() -> ConnectionPool:
     min_size=1,
     max_size=5,
     open=False,
-    kwargs={"sslmode": "require"}
+    kwargs={"sslmode": "require", "row_factory": dict_row}
   )
 
   try:

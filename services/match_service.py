@@ -23,3 +23,11 @@ class MatchService:
             return Success(data=candidates)
         else:
             return Error(error_msg=f"No candidates found for user with ID {user_id}")
+
+    def handle_candidate_decision(self, student_id: str, candidate_id: str, accepted: bool) -> Result:
+        """Handles user action for a candidate (Accept/Reject)"""
+        decision = "accepted" if accepted else "rejected"
+        success = self.match_repo.edit_status(student_id, candidate_id, decision)
+        if success:
+          return Success("Status Updated")
+        return Error("Failed to update status")

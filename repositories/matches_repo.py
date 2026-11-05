@@ -25,7 +25,7 @@ class MatchesRepo:
 
   def create_match(self, student_id: str, candidate_id: str, compatibility_score: float, reason: str = None) -> bool:
       """Create a new match in the database."""
-      # TODO: Decide on the handling of dupes (Ignore/edit?)
+      # TODO: Decide on the handling of dupes (Ignore/edit?) [Marrisa]
       with self.pool.connection() as conn:
           result = conn.execute(
               """
@@ -81,3 +81,23 @@ class MatchesRepo:
                           getattr(candidate, field).append(row[column_name])
 
       return candidate_list if candidate_list else []
+
+  def edit_status(self, student_id: str, candidate_id: str, new_status: str) -> bool:
+      """
+      Change the status of a student_id candidate_id pair in the matches table
+      """
+      valid_statuses = ["accepted", "rejected", "pending"]
+      if new_status not in valid_statuses:
+          return False
+      with self.pool.connection() as conn:
+          result = conn.execute(
+              """
+              UPDATE matches
+              SET status = %s
+              WHERE student_id = %s AND candidate_id = %s
+              RETURNING status
+              """
+          , (new_status, student_id, candidate_id))
+
+          return result is not None
+

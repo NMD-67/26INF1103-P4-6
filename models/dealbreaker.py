@@ -2,5 +2,8 @@ from dataclasses import dataclass
 
 @dataclass
 class DealBreaker:
-  name: str
-  value: str | list[str]
+  min_age: int | None
+  max_age: int | None
+  religion: str | None
+  race: str | None
+  gender: str | None

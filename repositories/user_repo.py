@@ -6,6 +6,7 @@ from psycopg import sql
 from exceptions.duplicate_student_id import DuplicateStudentIdException
 from models.user import User
 from config.user_fields import USER_FIELD_CONFIG
+from models.dealbreaker import DealBreaker
 
 class UserRepo:
   """Repository class for user-related database operations"""
@@ -140,3 +141,11 @@ class UserRepo:
       ).fetchone()
 
       return result is not None
+
+  def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
+    with self.pool.connection() as conn:
+      pass
+      # TODO: Val/Raph
+      # Get list of users from db that fit the criteria
+      # Loop through the list, turn the dict instances into User instances
+      # Return the list of Users

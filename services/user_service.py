@@ -4,7 +4,7 @@ from results.success import Success
 from results.error import Error
 from repositories.user_repo import UserRepo
 from models.user import User
-
+from models.dealbreaker import DealBreaker
 
 class UserService:
   def __init__(self, user_repo: UserRepo):
@@ -39,4 +39,13 @@ class UserService:
     if delete_user_result is None:
       return Error(f"User with student_id {student_id} not found")
     return Success(f"User with student_id {student_id} deleted successfully")
+
+  def filter_users_by_dealbreaker(self, student_id: str) -> Result:
+    """Returns an array of users that fit the criteria for the student's deal breakers, used to feed the AI for matchmaking processing"""
+    # TODO: Val/Raph   
+    # Call the user_repo method
+    # Check if user array is empty
+    # If empty, return error
+    # else return success with list[User] as data
+
     

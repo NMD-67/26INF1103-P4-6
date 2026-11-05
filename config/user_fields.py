@@ -94,3 +94,11 @@ USER_FIELD_CONFIG = {
 
 SCALAR_FIELDS = [field for field, config in USER_FIELD_CONFIG.items() if config["type"] != "list"]
 LIST_FIELDS = [field for field, config in USER_FIELD_CONFIG.items() if config["type"] == "list"]
+
+DEAL_BREAKER_CONFIG = {
+  "minimum_age",
+  "maximum_age"
+  "religion", 
+  "race", 
+  "gender"
+}

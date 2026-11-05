@@ -2,7 +2,7 @@
 AI Manager: scores compatibility between two User objects.
 
 Pipeline per pair:
-    User, User -> PromptBuilder -> AIClient -> ResponseParser -> ResponseValidator -> MatchScore
+    User, User -> PromptBuilder -> AIClient -> ResponseParser -> ResponseValidator -> Match
 """
 
 import json
@@ -11,12 +11,12 @@ import math
 import os
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import groq
 from groq import Groq
 
-from models import User
+from user import User  # adjust to wherever your User class lives
 
 logger = logging.getLogger(__name__)
 
@@ -178,10 +178,11 @@ class UserSerializer:
 class PromptBuilder:
     SYSTEM = (
         "You compare two student profiles and return a single compatibility "
-        "score from 0 to 100. Consider horoscope, MBTI, bio, expectations, "
+        "score from 0 to 100, plus a short reason (one or two sentences) "
+        "explaining the score. Consider horoscope, MBTI, bio, expectations, "
         "CCAs, events, hobbies and interest groups. "
         "Respond ONLY with valid JSON in this exact format, no other text: "
-        '{"score": <integer 0-100>}'
+        '{"score": <number 0-100>, "reason": "<short explanation>"}'
     )
 
     def __init__(self):
@@ -207,14 +208,34 @@ class ResponseParser:
 
 
 @dataclass(frozen=True)
-class MatchScore:
-    score: int
+class AIScore:
+    """Validated AI output for one pair (internal to the AI Manager)."""
+    score: float
+    reason: str
+
+
+@dataclass(frozen=True)
+class Match:
+    """The result returned by the AI Manager for one pair of users.
+    Refers to users by student_id only (association, no ownership)."""
+    student_id: str            # the user being matched
+    matched_user: str          # student_id of the candidate
+    compatibility_score: float
+    reason: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class ResponseValidator:
-    def validate(self, data: dict) -> MatchScore:
+    MAX_REASON_LENGTH = 300
+
+    def validate(self, data: dict) -> AIScore:
         if "score" not in data:
             raise AISchemaError("JSON missing 'score' key")
+        if "reason" not in data:
+            raise AISchemaError("JSON missing 'reason' key")
+
         score = data["score"]
         if isinstance(score, bool) or not isinstance(score, (int, float)):
             raise AISchemaError(f"Score is not a number: {score!r}")
@@ -222,7 +243,12 @@ class ResponseValidator:
             raise AISchemaError(f"Score is not finite: {score!r}")
         if not 0 <= score <= 100:
             raise AISchemaError(f"Score out of range: {score}")
-        return MatchScore(int(round(score)))
+
+        reason = data["reason"]
+        if not isinstance(reason, str) or not reason.strip():
+            raise AISchemaError(f"Reason is missing or not text: {reason!r}")
+
+        return AIScore(float(score), reason.strip()[: self.MAX_REASON_LENGTH])
 
 
 class RetryPolicy:
@@ -244,14 +270,8 @@ class RetryPolicy:
 
 
 # ======================================================================
-# Result object + the manager
+# The manager
 # ======================================================================
-@dataclass(frozen=True)
-class MatchResult:
-    candidate: User  # association: refers to a User, does not own it
-    score: MatchScore
-
-
 class AIManager:
     def __init__(self, client: AIClient, retry: RetryPolicy | None = None):
         self._client = client                 # aggregation (injected, swappable)
@@ -260,29 +280,36 @@ class AIManager:
         self._validator = ResponseValidator() # composition
         self._retry = retry or RetryPolicy()  # composition
 
-    def score_pair(self, main: User, candidate: User) -> MatchScore:
-        """Raises AIError if the pair cannot be scored."""
+    def match_pair(self, main: User, candidate: User) -> Match:
+        """Returns a Match for one pair. Raises AIError if it cannot be scored."""
         system, user = self._prompts.build(main, candidate)  # bad input fails fast
 
-        def attempt() -> MatchScore:
+        def attempt() -> AIScore:
             raw = self._client.complete(system, user)
             return self._validator.validate(self._parser.parse(raw))
 
-        return self._retry.run(attempt)
+        ai_score = self._retry.run(attempt)
+        return Match(
+            student_id=main.student_id,
+            matched_user=candidate.student_id,
+            compatibility_score=ai_score.score,
+            reason=ai_score.reason,
+        )
 
-    def score_candidates(self, main: User, candidates: list[User]) -> list[MatchResult]:
-        """Scores every candidate; skips ones that fail. Returns highest score first.
-        Raises AIPermanentError (e.g. bad API key) since every candidate would fail."""
-        results: list[MatchResult] = []
+    def match_candidates(self, main: User, candidates: list[User]) -> list[Match]:
+        """Returns Matches for every candidate that could be scored, highest score first.
+        A failing candidate is skipped and logged. Raises AIPermanentError
+        (e.g. bad API key) because every candidate would fail."""
+        matches: list[Match] = []
         for candidate in candidates:
             try:
-                results.append(MatchResult(candidate, self.score_pair(main, candidate)))
+                matches.append(self.match_pair(main, candidate))
             except AIPermanentError:
                 raise
             except AIError as e:
                 logger.warning("Skipped candidate %s: %s", candidate.student_id, e)
-        results.sort(key=lambda r: r.score.score, reverse=True)
-        return results
+        matches.sort(key=lambda m: m.compatibility_score, reverse=True)
+        return matches
 
 
 # ======================================================================
@@ -291,8 +318,8 @@ class AIManager:
 # client = GroqAIClient()
 # try:
 #     manager = AIManager(client)
-#     results = manager.score_candidates(main_user, candidate_users)
+#     matches = manager.match_candidates(main_user, candidate_users)
 # finally:
 #     client.close()
 #
-# scores = {r.candidate.student_id: r.score.score for r in results}
+# rows = [m.to_dict() for m in matches]   # hand to the Data Manager

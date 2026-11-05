@@ -260,7 +260,9 @@ def main():
                         print("This field does not apply to your current profile choices.")
                         continue
 
-                    profile[field["key"]] = io_manager.ask_field(field)
+                    profile[field["key"]] = io_manager.ask_profile_field(
+                        field, profile
+                    )
                     changed = True
 
                     # Clear fields that no longer apply after this change.

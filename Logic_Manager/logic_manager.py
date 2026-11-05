@@ -62,3 +62,23 @@ def clear_field(profile, field):
         profile[field["key"]] = []
     else:
         profile[field["key"]] = None
+
+def validate_age_preferences(profile):
+    minimum = profile.get("min_preferred_age")
+    maximum = profile.get("max_preferred_age")
+
+    # A blank value means no preference for that limit.
+    if minimum in (None, "") or maximum in (None, ""):
+        return None
+
+    # Google Sheets can return numbers as strings.
+    try:
+        minimum = int(minimum)
+        maximum = int(maximum)
+    except (ValueError, TypeError):
+        return "Preferred ages must be whole numbers."
+
+    if minimum > maximum:
+        return "Minimum preferred age cannot exceed maximum preferred age."
+
+    return None

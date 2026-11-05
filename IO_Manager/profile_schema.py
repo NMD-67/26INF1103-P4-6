@@ -209,6 +209,26 @@ PROFILE_FIELDS = [
     },
 
     {
+        "key": "min_preferred_age",
+        "question": "What is the youngest age you would like to match with?",
+        "label": "Minimum Preferred Age",
+        "section": SECTION_PERSONAL,
+        "required": False,
+        "kind": "age",
+        "hint": "18-30; Enter for no minimum preference",
+    },
+
+    {
+        "key": "max_preferred_age",
+        "question": "What is the oldest age you would like to match with?",
+        "label": "Maximum Preferred Age",
+        "section": SECTION_PERSONAL,
+        "required": False,
+        "kind": "age",
+        "hint": "18-30; Enter for no maximum preference",
+    },
+
+    {
         "key": "here_for",
         "question": "Are you here for friendship, a relationship, or both?",
         "label": "Here for",

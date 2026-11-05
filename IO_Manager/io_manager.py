@@ -132,6 +132,18 @@ def _validate_list(raw, field):
     return items, None
 
 
+def _validate_age(raw, field):
+    try:
+        age = int(raw)
+    except ValueError:
+        return None, "Enter a whole number."
+
+    if not MIN_AGE <= age <= MAX_AGE:
+        return None, f"Enter an age between {MIN_AGE} and {MAX_AGE}."
+
+    return age, None
+
+
 # ---------- input ----------
 def validate_field(raw, field):
     """Validate one CLI or Telegram answer without prompting or printing."""
@@ -162,6 +174,8 @@ def validate_field(raw, field):
         return _validate_instagram(raw, field)
     elif kind == "list":
         return _validate_list(raw, field)
+    elif kind == "age":
+        return _validate_age(raw, field)
     raise KeyError(kind)
 
 
@@ -188,6 +202,23 @@ def ask_field(field):
         return value
 
 
+def ask_profile_field(field, profile):
+    while True:
+        value = ask_field(field)
+
+        if field["key"] in ("min_preferred_age", "max_preferred_age"):
+            proposed_profile = profile.copy()
+            proposed_profile[field["key"]] = value
+
+            error = logic_manager.validate_age_preferences(proposed_profile)
+
+            if error:
+                show_error(error)
+                continue
+
+        return value
+
+
 def collect_profile(fields, preset):
     """Ask every field not already in `preset`, grouped by section.
 
@@ -205,7 +236,7 @@ def collect_profile(fields, preset):
         if field["section"] != current_section:
             current_section = field["section"]
             show_section(current_section)
-        profile[field["key"]] = ask_field(field)
+        profile[field["key"]] = ask_profile_field(field, profile)
     return profile
 
 

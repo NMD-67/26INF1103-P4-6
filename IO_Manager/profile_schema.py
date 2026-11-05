@@ -8,6 +8,8 @@ SECTION_BACKGROUND = "Background Information"
 SECTION_PERSONAL = "Personal Information"
 SECTION_EXTRA = "Extracurricular"
 
+RACES = ["Chinese", "Malay", "Indian", "Eurasian", "Other"]
+
 RELIGIONS = [
     "Buddhism", "Christianity", "Catholicism", "Islam", "Hinduism",
     "Taoism", "Sikhism", "Free thinker", "No religion", "Others",
@@ -145,13 +147,23 @@ PROFILE_FIELDS = [
     },
 
     {
+        "key": "race",
+        "question": "What is your race?",
+        "label": "Race",
+        "section": SECTION_BACKGROUND,
+        "required": False,
+        "kind": "choice",
+        "options": RACES + ["Prefer not to say"],
+    },
+
+    {
         "key": "religion",
         "question": "What is your religion?",
         "label": "Religion",
         "section": SECTION_BACKGROUND,
         "required": False,
         "kind": "choice",
-        "options": RELIGIONS,
+        "options": RELIGIONS + ["Prefer not to say"],
     },
 
     {
@@ -174,6 +186,26 @@ PROFILE_FIELDS = [
         "required": True,
         "kind": "choice",
         "options": ["Male", "Female", "Both"],
+    },
+
+    {
+        "key": "race_preference",
+        "question": "Do you have a race preference for your matches?",
+        "label": "Race Preference",
+        "section": SECTION_PERSONAL,
+        "required": False,
+        "kind": "choice",
+        "options": ["No preference"] + RACES + ["Prefer not to say"],
+    },
+
+    {
+        "key": "religion_preference",
+        "question": "Do you have a religion preference for your matches?",
+        "label": "Religion Preference",
+        "section": SECTION_PERSONAL,
+        "required": False,
+        "kind": "choice",
+        "options": ["No preference"] + RELIGIONS + ["Prefer not to say"],
     },
 
     {

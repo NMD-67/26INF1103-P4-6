@@ -91,3 +91,6 @@ USER_FIELD_CONFIG = {
     "type": "str"
   },
 } # TODO: Clint to add schema onto this config file
+
+SCALAR_FIELDS = [field for field, config in USER_FIELD_CONFIG.items() if config["type"] != "list"]
+LIST_FIELDS = [field for field, config in USER_FIELD_CONFIG.items() if config["type"] == "list"]

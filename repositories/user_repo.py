@@ -32,8 +32,7 @@ class UserRepo:
           """,
           (user.student_id,)
           ).fetchone()
-
-        print(f"Row returned from INSERT: {row}")  # Debugging statement
+        
         return User(
           student_id=row["student_id"]
         )
@@ -53,9 +52,9 @@ class UserRepo:
       f"{field} = %s" for field in fields if field in USER_FIELD_CONFIG and field != "student_id" and USER_FIELD_CONFIG[field]["storage"] == "users" and USER_FIELD_CONFIG[field]["editable"]
     )
 
-    print("Assignments:", assignments)  # Debugging statement
+    #print("Assignments:", assignments)  # Debugging statement
 
-    values = list(fields.values()) + [student_id]
+    values = [fields[field] for field in fields if field in USER_FIELD_CONFIG and USER_FIELD_CONFIG[field]["storage"] == "users" and USER_FIELD_CONFIG[field]["editable"]] + [student_id]
 
     query = f"""
       UPDATE users
@@ -73,7 +72,7 @@ class UserRepo:
         values = list(dict.fromkeys(fields[field]))  # Remove duplicates while preserving order
         table_name = USER_FIELD_CONFIG[field]["storage"]
         column_name = USER_FIELD_CONFIG[field]["column_name"]
-        print(f"Deleting from {table_name} where student_id = {student_id} and {column_name} not in {array_fields[field]}")  # Debugging statement
+        # print(f"Deleting from {table_name} where student_id = {student_id} and {column_name} not in {array_fields[field]}")  # Debugging statement
         conn.execute(
           f"""
           DELETE FROM {table_name}
@@ -83,7 +82,6 @@ class UserRepo:
         )
 
         # insert new fields that are not in the old list
-        print(f"Inserting into {table_name} for student_id = {student_id} with values = {array_fields[field]}")  # Debugging statement
         result = conn.execute(
           f"""
           INSERT INTO {table_name} (student_id, {column_name})
@@ -123,11 +121,10 @@ class UserRepo:
           (student_id,)
         )
         array_row = array_result.fetchall()
-        print(f"Retrieved array data from table: {table}: {array_row}")  # Debugging statement
         if array_row:
           row[table] = [item[column_name] for item in array_row]
 
-      print(f"Retrieved user details: {row}")  # Debugging statement
+      #print(f"Retrieved user details: {row}")  # Debugging statement
 
       return User.from_dict(dict(row))
 

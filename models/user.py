@@ -1,6 +1,6 @@
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, field
 
-@dataclass
+@dataclass(kw_only=True)
 class User:
   student_id: str
   name: str = None
@@ -15,11 +15,11 @@ class User:
   match_preference: str = None
   here_for: str = None
   expectations: str = None
-  ccas: list[str] = None
-  events: list[str] = None
-  hobbies: list[str] = None
-  interest_groups: list[str] = None
-  deal_breakers: list[dict] = None
+  ccas: list[str] = field(default_factory=list)
+  events: list[str] = field(default_factory=list)
+  hobbies: list[str] = field(default_factory=list)
+  interest_groups: list[str] = field(default_factory=list)
+  deal_breakers: list[dict] = field(default_factory=list)
   tele_handle: str = None
 
   @classmethod
@@ -29,7 +29,7 @@ class User:
       **{key: value for key, value in data.items() if key in class_fields}
     )
 
-  def get_user_details(self):
+  def get_user_details(self) -> dict:
     user_obj = {}
     for attr, value in vars(self).items():
       if attr.startswith("__"):
@@ -37,7 +37,7 @@ class User:
       user_obj[attr] = value
     return user_obj
 
-  def print_user_details(self):
+  def print_user_details(self) -> None:
     user_obj = self.get_user_details()
     for attr, value in user_obj.items():
       print(f"{attr}: {value}")

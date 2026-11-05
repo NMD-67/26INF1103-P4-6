@@ -2,13 +2,14 @@ from dataclasses import dataclass
 
 from models.user import User
 
-@dataclass
+@dataclass(kw_only=True)
 class Candidate(User):
-  __compatability_score: int
-  __reason: str
+  compatibility_score: int
+  reason: str = None
 
   def get_user_details(self) -> dict:
-    return super().get_user_details().update({"compatability_score": self.__compatability_score, "reason": self.__reason})
+    super().get_user_details().update({"compatibility_score": self.compatibility_score, "reason": self.reason})
+    return super().get_user_details()
 
   def handle_decision(self, accepted=False):
     pass

@@ -5,7 +5,7 @@ from psycopg.errors import UniqueViolation
 from psycopg import sql
 from exceptions.duplicate_student_id import DuplicateStudentIdException
 from models.user import User
-from config.user_fields import USER_FIELD_CONFIG
+from config.user_fields import REPOSITORY_FIELD_CONFIG as USER_FIELD_CONFIG
 from models.dealbreaker import DealBreaker
 
 class UserRepo:

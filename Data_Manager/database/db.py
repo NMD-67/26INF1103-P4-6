@@ -10,7 +10,6 @@ from Logic_Manager import logic_manager
 from IO_Manager.profile_schema import PROFILE_FIELDS
 
 from supabase import create_client
-
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_API_KEY"])
 
 logger = logging.getLogger(__name__)

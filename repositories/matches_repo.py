@@ -2,7 +2,8 @@ from psycopg_pool import ConnectionPool
 
 from models.candidate import Candidate
 from models.user import User
-from config.user_fields import SCALAR_FIELDS, USER_FIELD_CONFIG, LIST_FIELDS
+from config.user_fields import SCALAR_FIELDS, LIST_FIELDS
+from config.user_fields import REPOSITORY_FIELD_CONFIG as USER_FIELD_CONFIG
 
 class MatchesRepo:
   """Repository class for matches-related database operations"""

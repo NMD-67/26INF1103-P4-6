@@ -8,7 +8,7 @@ from Data_Manager.database import db
 from src import matches
 from src import auth
 from Logic_Manager.Matching import matching_logic
-from IO_Manager.profile_schema import PROFILE_FIELDS
+from config.user_fields import PROFILE_FIELDS
 
 from IO_Manager import io_manager
 from Logic_Manager import logic_manager

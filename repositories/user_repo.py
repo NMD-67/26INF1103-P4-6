@@ -143,9 +143,17 @@ class UserRepo:
       return result is not None
 
   def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
+    """Return users who pass the given student's dealbreaker criteria."""
     with self.pool.connection() as conn:
-      pass
-      # TODO: Val/Raph
-      # Get list of users from db that fit the criteria
-      # Loop through the list, turn the dict instances into User instances
-      # Return the list of Users
+      rows = conn.execute(
+        """
+        SELECT u.*
+        FROM users u
+        JOIN dealbreakers d
+          ON d.student_id = %s
+        WHERE u.student_id <> %s
+        """,
+        (student_id, student_id)
+      ).fetchall()
+
+      return [User.from_dict(dict(row)) for row in rows]

@@ -122,14 +122,45 @@ class MatchesRepo:
                 (new_status, student_id, candidate_id),
             )
 
-            return result is not None
+            # UPDATE ... RETURNING yields a row only when a record was updated.
+            return result.fetchone() is not None
+
+    def get_match_status(self, student_id: str, candidate_id: str) -> str | None:
+        """Get this student's status for a particular candidate."""
+        with self.pool.connection() as conn:
+            row = conn.execute(
+                """
+                SELECT status
+                FROM matches
+                WHERE student_id = %s AND candidate_id = %s
+                """,
+                (student_id, candidate_id),
+            ).fetchone()
+        return row["status"] if row else None
+
+    def get_accepted_students(self, student_id: str) -> list[str]:
+        """Get all candidate IDs this student has accepted."""
+        with self.pool.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT candidate_id
+                FROM matches
+                WHERE student_id = %s AND status = 'accepted'
+                """,
+                (student_id,),
+            ).fetchall()
+        return [str(row["candidate_id"]) for row in rows]
 
     def get_candidate_with_highest_score(self, student_id: str) -> Candidate | None:
         """
-        Finds the candidate with the highest score for student
+        Finds the candidate with the highest score for student.
+        TODO: Teammate's original implementation is not yet provided.
         """
+        return None
 
     def get_matches_for_user(self, student_id: str) -> list[Match] | None:
         """
-        Returns a list of matches for the user, returns None if an error
+        Returns a list of matches for the user, returns None if an error.
+        TODO: Teammate's original implementation is not yet provided.
         """
+        return None

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 
 @dataclass
@@ -17,3 +17,6 @@ class DealBreaker:
             "gender": self.gender,
             "race": self.race,
         }
+
+    def get_attribute_names(self) -> list[str]:
+        return [f.name for f in fields(self)]

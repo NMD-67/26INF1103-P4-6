@@ -44,3 +44,6 @@ class MatchService:
 
     def get_next_candidate(self, student_id: str):
         pass
+
+    def get_all_matches(self, student_id: str):
+        pass

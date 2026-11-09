@@ -56,8 +56,8 @@ if update_dealbreakers_result.success:
 else:
     print(f"Failed to update user hobbies: {update_dealbreakers_result.error_msg}")
 
-# Test get user
-get_user_result = user_service.login_user(test_user.student_id)
+# Test get user profile
+get_user_result = user_service.get_profile(test_user.student_id)
 if get_user_result.success:
     user = get_user_result.data
     user.print_user_details()  # Print user details for debugging

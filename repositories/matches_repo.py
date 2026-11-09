@@ -2,6 +2,7 @@ from psycopg_pool import ConnectionPool
 
 from models.candidate import Candidate
 from models.user import User
+from models.match import Match
 from config.user_fields import SCALAR_FIELDS, LIST_FIELDS
 from config.user_fields import REPOSITORY_FIELD_CONFIG as USER_FIELD_CONFIG
 
@@ -126,4 +127,9 @@ class MatchesRepo:
     def get_candidate_with_highest_score(self, student_id: str) -> Candidate | None:
         """
         Finds the candidate with the highest score for student
+        """
+
+    def get_matches_for_user(self, student_id: str) -> list[Match] | None:
+        """
+        Returns a list of matches for the user, returns None if an error
         """

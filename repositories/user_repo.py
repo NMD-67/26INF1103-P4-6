@@ -3,7 +3,14 @@ from psycopg.errors import UniqueViolation
 from psycopg import sql
 from exceptions.duplicate_student_id import DuplicateStudentIdException
 from models.user import User
-from config.user_fields import USER_FIELD_CONFIG, LIST_FIELDS, CLASS_FIELDS
+from models.profile import Profile
+from models.dealbreaker import DealBreaker
+from config.user_fields import (
+    USER_FIELD_CONFIG,
+    LIST_FIELDS,
+    CLASS_FIELDS,
+    DEAL_BREAKER_CONFIG,
+)
 
 
 class UserRepo:
@@ -187,6 +194,33 @@ class UserRepo:
             # print(f"Retrieved user details: {row}")  # Debugging statement
 
             return User.from_dict(dict(row))
+
+    def get_profile(self, student_id: str) -> Profile | None:
+        user = self.get_user(student_id)
+
+        if user is not None:
+            with self.pool.connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT * 
+                    FROM dealbreakers
+                    WHERE student_id = %s
+                    """,
+                    (student_id,),
+                ).fetchone()
+
+                filtered_row = {
+                    key: value
+                    for key, value in row.items()
+                    if key in DEAL_BREAKER_CONFIG
+                }
+
+                base_user = {
+                    field: value for field, value in user.get_user_details().items()
+                }
+
+                print(f"Row: {row}")
+                return Profile(**base_user, dealbreakers=filtered_row)
 
     def delete(self, student_id: str) -> bool:
         with self.pool.connection() as conn:

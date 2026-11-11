@@ -16,5 +16,6 @@ COPY Logic_Manager/ ./Logic_Manager/
 COPY src/ ./src/
 
 COPY main.py automated_test_script.py ./
+COPY sitogether_app.py ./
 
 CMD ["python", "main.py"]

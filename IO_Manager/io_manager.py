@@ -1,6 +1,6 @@
 """Terminal questions and output, plus answer validation shared with Telegram."""
 from datetime import date
-from IO_Manager.profile_schema import PROFILE_FIELDS
+from config.user_fields import PROFILE_FIELDS
 from src import auth
 
 from Logic_Manager import logic_manager

@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY AI_Manager/ ./AI_Manager/
 COPY Data_Manager/ ./Data_Manager/
 COPY IO_Manager/ ./IO_Manager/
+COPY config/ ./config/
 COPY Logic_Manager/ ./Logic_Manager/
 COPY src/ ./src/
 

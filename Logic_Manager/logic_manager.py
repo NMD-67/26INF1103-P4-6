@@ -1,84 +1,27 @@
-"""Domain logic for profiles: completeness checks
+"""Existing profile logic exposed through the ProfileLogicManager class."""
 
-No printing, no file access, no API calls.
-"""
 from datetime import datetime
+from .profile_logic_manager import ProfileLogicManager
+
+_profile_logic = ProfileLogicManager()
+
 
 def parse_birthday(text):
-    """Convert a DD/MM/YYYY string to a date."""
+    """Convert a DD/MM/YYYY string to a date (original behaviour)."""
     return datetime.strptime(text, "%d/%m/%Y").date()
 
 
 def should_skip_field(profile, field):
-    """Return True if this field's skip_if condition is met by earlier answers."""
-    condition = field.get("skip_if")
-    if not condition:
-        return False
-    return profile.get(condition["field"]) in condition["in"]
+    return _profile_logic.should_skip_field(profile, field)
 
 
 def find_missing_fields(profile, fields):
-    missing = []
-
-    for field in fields:
-        if not field["required"]:
-            continue
-
-        if should_skip_field(profile, field):
-            continue
-
-        value = profile.get(field["key"])
-
-        if isinstance(value, str):
-            value = value.strip()
-
-        elif isinstance(value, list):
-            cleaned_items = []
-
-            for item in value:
-                if item is None:
-                    continue
-
-                text = str(item).strip()
-
-                if text:
-                    cleaned_items.append(text)
-
-            value = cleaned_items
-
-        if not value:
-            missing.append(field)
-
-    return missing
+    return _profile_logic.find_missing_fields(profile, fields)
 
 
 def is_profile_complete(profile, fields):
-    """A profile is complete when no required field is missing."""
-    missing = find_missing_fields(profile, fields)
-    return len(missing) == 0
+    return _profile_logic.is_profile_complete(profile, fields)
+
 
 def clear_field(profile, field):
-    if field["kind"] == "list":
-        profile[field["key"]] = []
-    else:
-        profile[field["key"]] = None
-
-def validate_age_preferences(profile):
-    minimum = profile.get("min_preferred_age")
-    maximum = profile.get("max_preferred_age")
-
-    # A blank value means no preference for that limit.
-    if minimum in (None, "") or maximum in (None, ""):
-        return None
-
-    # Google Sheets can return numbers as strings.
-    try:
-        minimum = int(minimum)
-        maximum = int(maximum)
-    except (ValueError, TypeError):
-        return "Preferred ages must be whole numbers."
-
-    if minimum > maximum:
-        return "Minimum preferred age cannot exceed maximum preferred age."
-
-    return None
+    return _profile_logic.clear_field(profile, field)

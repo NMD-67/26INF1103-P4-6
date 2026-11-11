@@ -1,147 +1,241 @@
-
-
 from psycopg_pool import ConnectionPool
 from psycopg.errors import UniqueViolation
 from psycopg import sql
 from exceptions.duplicate_student_id import DuplicateStudentIdException
 from models.user import User
-from config.user_fields import USER_FIELD_CONFIG
+from models.profile import Profile
 from models.dealbreaker import DealBreaker
+from config.user_fields import (
+    USER_FIELD_CONFIG,
+    LIST_FIELDS,
+    CLASS_FIELDS,
+    DEAL_BREAKER_CONFIG,
+)
+
 
 class UserRepo:
-  """Repository class for user-related database operations"""
-  def __init__(self, pool: ConnectionPool):
-    self.pool = pool
+    """Repository class for user-related database operations"""
 
-  def _get_array_tables(self) -> list[str]:
-    """Get a list of tables that store array data for users"""
-    array_tables = []
-    for key, value in USER_FIELD_CONFIG.items():
-      if value["storage"] != "users":
-        array_tables.append(value["storage"])
-    return array_tables
+    def __init__(self, pool: ConnectionPool):
+        self.pool = pool
 
-  def create(self, user: User) -> User:
-    """Create a new user in the database."""
-    try:
-      with self.pool.connection() as conn:
-        row = conn.execute(
-          """
+    def _get_array_tables(self) -> list[str]:
+        """Get a list of tables that store array data for users"""
+        array_tables = []
+        for key, value in USER_FIELD_CONFIG.items():
+            if value["type"] == list:
+                array_tables.append(value["storage"])
+        return array_tables
+
+    def create(self, user: User) -> User:
+        """Create a new user in the database."""
+        try:
+            with self.pool.connection() as conn:
+                row = conn.execute(
+                    """
           INSERT INTO users (student_id)
           VALUES (%s)
           RETURNING student_id
           """,
-          (user.student_id,)
-          ).fetchone()
-        
-        return User(
-          student_id=row["student_id"]
+                    (user.student_id,),
+                ).fetchone()
+
+                return User(student_id=row["student_id"])
+        except UniqueViolation as error:
+            if error.diag.constraint_name == "users_student_id_key":
+                raise DuplicateStudentIdException(
+                    "Duplicate student ID found"
+                ) from error
+            raise
+
+    def update(self, student_id: str, fields: dict) -> bool:
+        """Update user details in the database. Parameters:
+        student_id: str
+        fields: dict{
+        #Attributes to update eg.
+        "name": str,
+        "hobbies": list[str],
+        "deal_breakers": DealBreakers
+        }"""
+        if not fields:
+            return False
+
+        array_fields = {
+            field: value for field, value in fields.items() if field in LIST_FIELDS
+        }
+
+        class_fields = {
+            field: value for field, value in fields.items() if field in CLASS_FIELDS
+        }
+
+        assignments = ", ".join(
+            f"{field} = %s"
+            for field in fields
+            if field in USER_FIELD_CONFIG
+            and field != "student_id"
+            and USER_FIELD_CONFIG[field]["storage"] == "users"
+            and USER_FIELD_CONFIG[field]["editable"]
         )
-    except UniqueViolation as error:
-      if error.diag.constraint_name == "users_student_id_key":
-        raise DuplicateStudentIdException("Duplicate student ID found") from error
-      raise
 
-  def update(self, student_id: str, fields: dict) -> bool:
-    """Update user details in the database. Accepts a User object, which will be treated as the final version of the user. Returns the created User object."""
-    if not fields:
-      return False
+        # print("Assignments:", assignments)  # Debugging statement
 
-    array_fields = {field: value for field, value in fields.items() if field in USER_FIELD_CONFIG and USER_FIELD_CONFIG[field]["storage"] != "users"}
+        values = [
+            fields[field]
+            for field in fields
+            if field in USER_FIELD_CONFIG
+            and USER_FIELD_CONFIG[field]["storage"] == "users"
+            and USER_FIELD_CONFIG[field]["editable"]
+        ] + [student_id]
 
-    assignments = ", ".join(
-      f"{field} = %s" for field in fields if field in USER_FIELD_CONFIG and field != "student_id" and USER_FIELD_CONFIG[field]["storage"] == "users" and USER_FIELD_CONFIG[field]["editable"]
-    )
-
-    #print("Assignments:", assignments)  # Debugging statement
-
-    values = [fields[field] for field in fields if field in USER_FIELD_CONFIG and USER_FIELD_CONFIG[field]["storage"] == "users" and USER_FIELD_CONFIG[field]["editable"]] + [student_id]
-
-    query = f"""
+        query = f"""
       UPDATE users
       SET {assignments}
       WHERE student_id = %s
       RETURNING student_id
     """
 
-    with self.pool.connection() as conn:
-      if assignments:
-        result = conn.execute(query, values).fetchone()
+        with self.pool.connection() as conn:
+            result = None
+            if assignments:
+                result = conn.execute(query, values).fetchone()
 
-      for field in array_fields:
-        # delete fields that are not in the new list
-        values = list(dict.fromkeys(fields[field]))  # Remove duplicates while preserving order
-        table_name = USER_FIELD_CONFIG[field]["storage"]
-        column_name = USER_FIELD_CONFIG[field]["column_name"]
-        # print(f"Deleting from {table_name} where student_id = {student_id} and {column_name} not in {array_fields[field]}")  # Debugging statement
-        conn.execute(
-          f"""
-          DELETE FROM {table_name}
-          WHERE student_id = %s AND NOT({column_name} = ANY(%s))
-          """,
-          (student_id, values)  
-        )
+            for field in array_fields:
+                # delete fields that are not in the new list
+                values = list(
+                    dict.fromkeys(fields[field])
+                )  # Remove duplicates while preserving order
+                table_name = USER_FIELD_CONFIG[field]["storage"]
+                column_name = USER_FIELD_CONFIG[field]["column_name"]
+                # print(f"Deleting from {table_name} where student_id = {student_id} and {column_name} not in {array_fields[field]}")  # Debugging statement
+                conn.execute(
+                    f"""
+                    DELETE FROM {table_name}
+                    WHERE student_id = %s AND NOT({column_name} = ANY(%s))
+                    """,
+                    (student_id, values),
+                )
 
-        # insert new fields that are not in the old list
-        result = conn.execute(
-          f"""
-          INSERT INTO {table_name} (student_id, {column_name})
-          SELECT %s, unnest(%s::text[])
-          ON CONFLICT (student_id, {column_name}) DO NOTHING
-          RETURNING student_id
-          """,
-          (student_id, array_fields[field])
-        )
+                # insert new fields that are not in the old list
+                result = conn.execute(
+                    f"""
+                    INSERT INTO {table_name} (student_id, {column_name})
+                    SELECT %s, unnest(%s::text[])
+                    ON CONFLICT (student_id, {column_name}) DO NOTHING
+                    RETURNING student_id
+                    """,
+                    (student_id, array_fields[field]),
+                )
+            for field in class_fields:
+                # Check if the provided class matches config class
+                expected_type = USER_FIELD_CONFIG[field]["type"]
+                provided_class = fields[field]
+                if isinstance(provided_class, expected_type):
+                    updated_data = provided_class.to_row()
+                    table_name = USER_FIELD_CONFIG[field]["storage"]
+                    column_names = list(updated_data)
+                    columns = ", ".join(column for column in column_names)
+                    values = list(updated_data.values())
+                    placeholders = ", ".join(["%s"] * len(values))
+                    print(f"Placeholders: {placeholders}, values: {values}")
+                    sets = ", ".join(
+                        f"{column} = EXCLUDED.{column}" for column in column_names
+                    )
+                    result = conn.execute(
+                        f"""
+                    INSERT INTO {table_name} (student_id, {columns}) VALUES (%s, {placeholders})
+                    ON CONFLICT (student_id) DO UPDATE SET {sets}
+                    RETURNING student_id
+                    """,
+                        (
+                            student_id,
+                            *values,
+                        ),
+                    )
+                    print(f"Insert into {table_name}: {result}")
 
-      return result is not None
+            return result is not None
 
-  def get_user(self, student_id: str) -> User | None:
-    with self.pool.connection() as conn:
-      user_details = conn.execute(
-        """
+    def get_user(self, student_id: str) -> User | None:
+        with self.pool.connection() as conn:
+            user_details = conn.execute(
+                """
         SELECT *
         FROM users
         WHERE student_id = %s
         """,
-        (student_id,)
-      )
-      row = user_details.fetchone()
-      if not row:
-        return None
+                (student_id,),
+            )
+            row = user_details.fetchone()
+            if not row:
+                return None
 
-      array_tables = self._get_array_tables()
+            array_tables = self._get_array_tables()
 
-      for table in array_tables:
-        column_name = USER_FIELD_CONFIG[next(key for key, value in USER_FIELD_CONFIG.items() if value["storage"] == table)]["column_name"]
-        array_result = conn.execute(
-          f"""
+            for table in array_tables:
+                column_name = USER_FIELD_CONFIG[
+                    next(
+                        key
+                        for key, value in USER_FIELD_CONFIG.items()
+                        if value["storage"] == table
+                    )
+                ]["column_name"]
+                array_result = conn.execute(
+                    f"""
           SELECT *
           FROM {table}
           WHERE student_id = %s
           """,
-          (student_id,)
-        )
-        array_row = array_result.fetchall()
-        if array_row:
-          row[table] = [item[column_name] for item in array_row]
+                    (student_id,),
+                )
+                array_row = array_result.fetchall()
+                if array_row:
+                    row[table] = [item[column_name] for item in array_row]
 
-      #print(f"Retrieved user details: {row}")  # Debugging statement
+            # print(f"Retrieved user details: {row}")  # Debugging statement
 
-      return User.from_dict(dict(row))
+            return User.from_dict(dict(row))
 
-  def delete(self, student_id: str) -> bool:
-    with self.pool.connection() as conn:
-      result = conn.execute(
-        """
+    def get_profile(self, student_id: str) -> Profile | None:
+        user = self.get_user(student_id)
+
+        if user is not None:
+            with self.pool.connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT * 
+                    FROM dealbreakers
+                    WHERE student_id = %s
+                    """,
+                    (student_id,),
+                ).fetchone()
+
+                filtered_row = {
+                    key: value
+                    for key, value in row.items()
+                    if key in DEAL_BREAKER_CONFIG
+                }
+
+                base_user = {
+                    field: value for field, value in user.get_user_details().items()
+                }
+
+                print(f"Row: {row}")
+                return Profile(**base_user, dealbreakers=filtered_row)
+
+    def delete(self, student_id: str) -> bool:
+        with self.pool.connection() as conn:
+            result = conn.execute(
+                """
         DELETE FROM users
         WHERE student_id = %s
         RETURNING student_id
         """,
-        (student_id,)
-      ).fetchone()
+                (student_id,),
+            ).fetchone()
 
-      return result is not None
+            return result is not None
 
+<<<<<<< HEAD
   def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
     """Return users who satisfy the given student's dealbreaker criteria."""
     with self.pool.connection() as conn:
@@ -172,3 +266,12 @@ class UserRepo:
 
 
 UserRepo.test()  # Call the test method to run the tests 
+=======
+    def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
+        with self.pool.connection() as conn:
+            pass
+            # TODO: Val/Raph
+            # Get list of users from db that fit the criteria
+            # Loop through the list, turn the dict instances into User instances
+            # Return the list of Users
+>>>>>>> 166cf682412e09aeef68dafe65475bd129e120f1

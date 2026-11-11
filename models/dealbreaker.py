@@ -1,9 +1,22 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
+
 
 @dataclass
 class DealBreaker:
-  min_age: int | None
-  max_age: int | None
-  religion: str | None
-  race: str | None
-  gender: str | None
+    min_age: int | None = None
+    max_age: int | None = None
+    religion: list[str] = field(default_factory=list)
+    race: list[str] = field(default_factory=list)
+    gender: str | None = None
+
+    def to_row(self) -> dict:
+        return {
+            "min_age": self.min_age,
+            "max_age": self.max_age,
+            "religion": self.religion,
+            "gender": self.gender,
+            "race": self.race,
+        }
+
+    def get_attribute_names(self) -> list[str]:
+        return [f.name for f in fields(self)]

@@ -318,7 +318,7 @@ USER_FIELD_CONFIG = {
         "label": "CCAs",
         "section": SECTION_EXTRA,
         "required": False,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated",
     },
     "events": {
@@ -330,7 +330,7 @@ USER_FIELD_CONFIG = {
         "label": "SIT Events",
         "section": SECTION_EXTRA,
         "required": False,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated",
     },
     "hobbies": {
@@ -342,7 +342,7 @@ USER_FIELD_CONFIG = {
         "label": "Hobbies",
         "section": SECTION_EXTRA,
         "required": True,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated, at least one",
     },
     "interests": {
@@ -355,7 +355,7 @@ USER_FIELD_CONFIG = {
         "label": "Outside Interest Groups",
         "section": SECTION_EXTRA,
         "required": False,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated",
     },
 }
@@ -380,13 +380,18 @@ LIST_FIELDS = [
     key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] == list
 ]
 
-CLASS_FIELDS = [
-    {
-        "dealbreakers": {
-            "editable": True,
-            "storage": "dealbreakers",
-        }
+CLASS_FIELDS = {
+    "dealbreakers": {
+        "editable": True,
+        "storage": "dealbreakers",
+        "type": DealBreaker,
     }
-]
+}
 
-DEAL_BREAKER_CONFIG = {"min_age", "max_age" "religion", "race", "gender"}
+DEAL_BREAKER_CONFIG = {
+    "min_age",
+    "max_age",
+    "religion",
+    "race",
+    "gender",
+}

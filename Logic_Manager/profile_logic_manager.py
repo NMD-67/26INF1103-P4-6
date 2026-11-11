@@ -52,3 +52,23 @@ class ProfileLogicManager:
     def clear_field(self, profile: dict, field: dict) -> None:
         """Reset one field in the same way as the Part 1 code."""
         profile[field["key"]] = [] if field["kind"] == "list" else None
+
+    def validate_age_preferences(self, profile):
+        minimum = profile.get("min_preferred_age")
+        maximum = profile.get("max_preferred_age")
+
+        for age in (minimum, maximum):
+            if age is None:
+                continue
+
+            if type(age) is not int:
+                return "Preferred ages must be whole numbers."
+
+            if not 18 <= age <= 30:
+                return "Preferred ages must be between 18 and 30."
+
+        if minimum is not None and maximum is not None:
+            if minimum > maximum:
+                return "Minimum preferred age cannot exceed maximum preferred age."
+
+        return None

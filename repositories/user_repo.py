@@ -127,11 +127,13 @@ class UserRepo:
                 )
             for field in class_fields:
                 # Check if the provided class matches config class
-                expected_type = USER_FIELD_CONFIG[field]["type"]
+                expected_type = CLASS_FIELDS[field]["type"]
                 provided_class = fields[field]
+                if not isinstance(provided_class, expected_type):
+                    raise TypeError(f"{field} must be a {expected_type.__name__} object.")
                 if isinstance(provided_class, expected_type):
                     updated_data = provided_class.to_row()
-                    table_name = USER_FIELD_CONFIG[field]["storage"]
+                    table_name = CLASS_FIELDS[field]["storage"]
                     column_names = list(updated_data)
                     columns = ", ".join(column for column in column_names)
                     values = list(updated_data.values())
@@ -211,7 +213,7 @@ class UserRepo:
 
                 filtered_row = {
                     key: value
-                    for key, value in row.items()
+                    for key, value in (row or {}).items()
                     if key in DEAL_BREAKER_CONFIG
                 }
 

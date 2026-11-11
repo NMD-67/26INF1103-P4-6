@@ -25,3 +25,7 @@ def is_profile_complete(profile, fields):
 
 def clear_field(profile, field):
     return _profile_logic.clear_field(profile, field)
+
+
+def validate_age_preferences(profile):
+    return _profile_logic.validate_age_preferences(profile)

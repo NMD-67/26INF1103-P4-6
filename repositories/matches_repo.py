@@ -38,14 +38,15 @@ class MatchesRepo:
         reason: str = None,
     ) -> bool:
         """Create a new match in the database."""
-        # TODO: Decide on the handling of dupes (Ignore/edit?) [Marrisa]
+        # Refresh AI results while preserving the existing decision/status.
         with self.pool.connection() as conn:
             result = conn.execute(
                 """
               INSERT INTO matches (student_id, candidate_id, compatibility_score, reason, status)
               VALUES (%s, %s, %s, %s, 'pending')
               ON CONFLICT (student_id, candidate_id) 
-              DO UPDATE SET student_id = EXCLUDED.student_id
+              DO UPDATE SET compatibility_score = EXCLUDED.compatibility_score,
+                            reason = EXCLUDED.reason
               RETURNING student_id
               """,
                 (student_id, candidate_id, compatibility_score, reason),
@@ -65,7 +66,7 @@ class MatchesRepo:
               SELECT {user_fields_str}, m.compatibility_score, m.status, m.reason
               FROM matches m
               JOIN users u ON m.candidate_id = u.student_id
-              WHERE m.student_id = %s 
+              WHERE m.student_id = %s AND m.status = 'pending'
               ORDER BY m.compatibility_score DESC
               """,
                 (student_id,),
@@ -76,6 +77,9 @@ class MatchesRepo:
                 if fetch_one
                 else candidate_result.fetchall()
             )
+
+            if not candidate_result:
+                return []
 
             if not isinstance(candidate_result, list):
                 candidate_result = [candidate_result]
@@ -110,9 +114,10 @@ class MatchesRepo:
                             None,
                         )
                         if candidate:
-                            if not hasattr(candidate, field):
-                                setattr(candidate, field, [])
-                            getattr(candidate, field).append(row[column_name])
+                            model_key = USER_FIELD_CONFIG[field].get("model_key", field)
+                            if not hasattr(candidate, model_key):
+                                setattr(candidate, model_key, [])
+                            getattr(candidate, model_key).append(row[column_name])
 
         return candidate_list if candidate_list else []
 
@@ -221,8 +226,9 @@ class MatchesRepo:
                             None,
                         )
                         if match:
-                            if not hasattr(match, field):
-                                setattr(match, field, [])
-                            getattr(match, field).append(row[column_name])
+                            model_key = USER_FIELD_CONFIG[field].get("model_key", field)
+                            if not hasattr(match, model_key):
+                                setattr(match, model_key, [])
+                            getattr(match, model_key).append(row[column_name])
 
         return matches_list if matches_list else []

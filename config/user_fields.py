@@ -174,7 +174,7 @@ USER_FIELD_CONFIG = {
     },
     "race": {
         "editable": True,
-        "storage": None,
+        "storage": "users",
         "type": str,
         "question": "What is your race?",
         "label": "Race",
@@ -300,7 +300,7 @@ USER_FIELD_CONFIG = {
     },
     "insta_handle": {
         "editable": True,
-        "storage": None,
+        "storage": "users",
         "type": str,
         "question": "What is your Instagram handle?",
         "label": "Instagram Handle",
@@ -351,6 +351,7 @@ USER_FIELD_CONFIG = {
         "type": list,
         "column_name": "interest",
         "form_key": "interest_groups",
+        "model_key": "interest_groups",
         "question": "Which interest groups do you belong to outside SIT?",
         "label": "Outside Interest Groups",
         "section": SECTION_EXTRA,

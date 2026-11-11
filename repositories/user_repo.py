@@ -143,7 +143,7 @@ class UserRepo:
       return result is not None
 
   def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
-    """Return users who pass the given student's dealbreaker criteria."""
+    """Return users who satisfy the given student's dealbreaker criteria."""
     with self.pool.connection() as conn:
       rows = conn.execute(
         """
@@ -151,9 +151,24 @@ class UserRepo:
         FROM users u
         JOIN dealbreakers d
           ON d.student_id = %s
-        WHERE u.student_id <> %s
+        WHERE u.student_id <> d.student_id
+          AND (d.min_age IS NULL OR u.age >= d.min_age)
+          AND (d.max_age IS NULL OR u.age <= d.max_age)
+          AND (d.gender  IS NULL OR u.gender = d.gender)
+          AND (COALESCE(cardinality(d.religion), 0) = 0 OR u.religion = ANY(d.religion))
+          AND (COALESCE(cardinality(d.race), 0) = 0 OR u.race = ANY(d.race))
         """,
-        (student_id, student_id)
+        (student_id,)
       ).fetchall()
 
       return [User.from_dict(dict(row)) for row in rows]
+
+  @staticmethod
+  def test():
+        """Test method to verify the functionality of the UserRepo class."""
+        # Implement test cases here
+        print("Running UserRepo tests...")
+        pass
+
+
+UserRepo.test()  # Call the test method to run the tests 

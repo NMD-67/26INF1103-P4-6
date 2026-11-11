@@ -50,4 +50,15 @@ class MatchService:
             return Error(error_msg=f"No candidates found for user with ID {student_id}")
 
     def get_all_matches(self, student_id: str) -> Result:
-        pass
+        """Return profiles where both students accepted each other."""
+        matches = self.match_repo.get_matches_for_user(student_id)
+        if matches is None:
+            return Error("Could not retrieve mutual connections")
+        return Success(data=matches)
+
+    def get_mutual_connections(self, student_id: str) -> Result:
+        """Return mutual connection IDs for the suggestion service."""
+        result = self.get_all_matches(student_id)
+        if not result.success:
+            return result
+        return Success(data=[str(match.student_id) for match in result.data])

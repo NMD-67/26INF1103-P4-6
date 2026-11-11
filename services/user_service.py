@@ -25,7 +25,7 @@ class UserService:
 
     def update_user(self, student_id: str, fields: dict) -> Result:
         update_user_result = self.user_repo.update(student_id, fields)
-        if update_user_result is None:
+        if not update_user_result:
             return Error(f"User with student_id {student_id} not found")
         return Success(f"User with student_id {student_id} updated successfully")
 
@@ -37,7 +37,7 @@ class UserService:
 
     def delete_user(self, student_id: str) -> Result:
         delete_user_result = self.user_repo.delete(student_id)
-        if delete_user_result is None:
+        if not delete_user_result:
             return Error(f"User with student_id {student_id} not found")
         return Success(f"User with student_id {student_id} deleted successfully")
 

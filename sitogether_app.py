@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import date, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,12 @@ class SITogetherApp:
         values = {}
         for key, settings in self._config.items():
             form_key = settings.get("form_key", key)
-            values[form_key] = details.get(key, details.get(form_key))
+            value = details.get(key, details.get(form_key))
+
+            if form_key == "birthday" and isinstance(value, date):
+                value = value.strftime("%d/%m/%Y")
+
+            values[form_key] = value
         preferences = profile.dealbreakers
         if preferences is not None:
             values["min_preferred_age"] = preferences.min_age
@@ -80,6 +86,8 @@ class SITogetherApp:
             if form_key not in answers:
                 continue
             value = answers[form_key]
+            if form_key == "birthday" and isinstance(value, str):
+                value = datetime.strptime(value, "%d/%m/%Y").date()
             if settings["storage"] is None:
                 if value not in (None, "", []):
                     raise ValueError(f"Storage for {form_key} is not configured yet.")

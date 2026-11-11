@@ -30,5 +30,8 @@ class BotRepo:
                 (bot_id,),
             ).fetchone()
 
+            if result is None:
+                return None
+
             student_id = result.get("student_id")
             return student_id

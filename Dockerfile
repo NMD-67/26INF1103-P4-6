@@ -14,5 +14,10 @@ COPY IO_Manager/ ./IO_Manager/
 COPY config/ ./config/
 COPY Logic_Manager/ ./Logic_Manager/
 COPY main.py ./
+COPY models/ ./models/
+COPY repositories/ ./repositories/
+COPY results/ ./results/
+COPY services/ ./services/
+COPY exceptions/ ./exceptions/
 
 CMD ["python", "-m" , "tele.bot"]

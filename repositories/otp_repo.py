@@ -7,6 +7,13 @@ class OTPRepo:
 
     def create_otp(self, student_id: str, otp: int) -> bool:
         with self.pool.connection() as conn:
+            delete_result = conn.execute(
+                """
+                DELETE FROM otp
+                WHERE student_id = %s
+                """,
+                (student_id,),
+            )
             result = conn.execute(
                 """
         INSERT INTO otp (student_id, otp)
@@ -36,3 +43,15 @@ class OTPRepo:
             otp = result.get("otp")
 
             return otp
+
+    def delete_otp(self, student_id: str) -> bool:
+        with self.pool.connection() as conn:
+            result = conn.execute(
+                """
+                DELETE FROM otp
+                WHERE student_id=%s
+                returning student_id
+                """,
+                (student_id,),
+            )
+            return result is not None

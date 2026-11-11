@@ -28,7 +28,7 @@ from services.bot_service import BotRepo, BotService
 from services.otp_service import OTPRepo, OTPService
 from services.user_service import UserRepo, UserService
 
-from src.auth import login_user, validate_otp, get_user_info
+from src.auth import get_user_info
 from Logic_Manager.Matching.matching_logic import get_next_user
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -76,7 +76,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tele_id = get_tele_id(update)
     bot_user = bot_service.get_student_id(tele_id)
-    if bot_user is not None:
+    if bot_user.success:
         await send_msg(
             update,
             "You are already logged in! Use /setup to complete your profile or /profile to view it.",
@@ -88,7 +88,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     student_id = context.args[0]
     # Call the login_user function from auth.py
-    response = otp_service.send_otp(student_id)
+    response = await otp_service.send_otp(student_id)
     if response.success:
         await send_msg(
             update,
@@ -106,7 +106,7 @@ async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     student_id = context.args[0]
     otp = context.args[1]
     tele_id = get_tele_id(update)
-    result = otp_service.verify_otp(student_id, otp)
+    result = otp_service.verify_otp(student_id, otp, user_service)
     # print(f"opt res {result}")
     if result.success:
         bot_service.add_bot(student_id, tele_id)

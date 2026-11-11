@@ -51,7 +51,9 @@ class MatchesRepo:
             ).fetchone()
         return result is not None
 
-    def get_candidates_for_user(self, student_id: str) -> list[Candidate]:
+    def get_candidates_for_user(
+        self, student_id: str, fetch_one: bool = False
+    ) -> list[Candidate]:
         """Retrieve candidates for a specific user."""
         candidate_list = []
         user_table_fields = ["u." + field for field in SCALAR_FIELDS]
@@ -66,7 +68,16 @@ class MatchesRepo:
               ORDER BY m.compatibility_score DESC
               """,
                 (student_id,),
-            ).fetchall()
+            )
+
+            candidate_result = (
+                candidate_result.fetchone()
+                if fetch_one
+                else candidate_result.fetchall()
+            )
+
+            if isinstance(candidate_result) != "list":
+                candidate_result = [candidate_result]
 
             candidate_list = [
                 Candidate.from_dict(dict(row)) for row in candidate_result
@@ -163,4 +174,54 @@ class MatchesRepo:
         Returns a list of matches for the user, returns None if an error.
         TODO: Teammate's original implementation is not yet provided.
         """
-        return None
+        matches_list = []
+        user_table_fields = ["u." + field for field in SCALAR_FIELDS]
+        user_fields_str = ", ".join(user_table_fields)
+        with self.pool.connection() as conn:
+            matches_result = conn.execute(
+                f"""
+              SELECT {user_fields_str}
+              FROM matches m
+              JOIN matches r ON m.student_id = r.candidate_id AND r.student_id = m.candidate_id
+              JOIN users u ON u.student_id = m.candidate_id
+              WHERE m.student_id = %s 
+              AND m.status = 'accepted'
+              AND r.status = 'accepted'
+              ORDER BY m.compatibility_score DESC
+              """,
+                (student_id,),
+            ).fetchall()
+
+            matches_list = [Match.from_dict(dict(row)) for row in matches_result]
+
+            matches_id_list = [row["student_id"] for row in matches_result]
+            array_fields = [field for field in LIST_FIELDS]
+
+            for field in array_fields:
+                table_name = USER_FIELD_CONFIG[field]["storage"]
+                column_name = USER_FIELD_CONFIG[field]["column_name"]
+                array_result = conn.execute(
+                    f"""
+                  SELECT student_id, {column_name}
+                  FROM {table_name}
+                  WHERE student_id = ANY(%s)
+                  """,
+                    (matches_id_list,),
+                ).fetchall()
+
+                for row in array_result:
+                    if row["student_id"] in matches_id_list:
+                        match = next(
+                            (
+                                student
+                                for student in matches_list
+                                if student.student_id == row["student_id"]
+                            ),
+                            None,
+                        )
+                        if match:
+                            if not hasattr(match, field):
+                                setattr(match, field, [])
+                            getattr(match, field).append(row[column_name])
+
+        return matches_list if matches_list else []

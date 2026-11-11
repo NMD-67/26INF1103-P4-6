@@ -44,7 +44,8 @@ class MatchesRepo:
                 """
               INSERT INTO matches (student_id, candidate_id, compatibility_score, reason, status)
               VALUES (%s, %s, %s, %s, 'pending')
-              ON CONFLICT (student_id, candidate_id) DO NOTHING
+              ON CONFLICT (student_id, candidate_id) 
+              DO UPDATE SET student_id = EXCLUDED.student_id
               RETURNING student_id
               """,
                 (student_id, candidate_id, compatibility_score, reason),
@@ -76,7 +77,7 @@ class MatchesRepo:
                 else candidate_result.fetchall()
             )
 
-            if isinstance(candidate_result) != "list":
+            if not isinstance(candidate_result, list):
                 candidate_result = [candidate_result]
 
             candidate_list = [

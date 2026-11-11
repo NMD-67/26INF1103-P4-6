@@ -14,12 +14,12 @@ class UserService:
     def login_user(self, student_id: str) -> Result:
         user = self.user_repo.get_user(student_id)
         if user:
-            return Success(user)
+            return Success("User Verified")
 
         try:
             new_user = self.user_repo.create(User(student_id=student_id))
             if new_user:
-                return Success(new_user)
+                return Success("User Created")
         except DuplicateStudentIdException as e:
             return Error(str(e))
 

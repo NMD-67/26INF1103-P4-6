@@ -1,5 +1,18 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, MenuButtonCommands
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    BotCommand,
+    MenuButtonCommands,
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+    CallbackQueryHandler,
+)
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -10,12 +23,24 @@ from IO_Manager import io_manager
 from Data_Manager.database import db
 from tele import profile_setup
 
-from Data_Manager.database.db import save_user, get_bot_user
+from Data_Manager.database.connection import create_connection_pool
+from services.bot_service import BotRepo, BotService
+from services.otp_service import OTPRepo, OTPService
+from services.user_service import UserRepo, UserService
+
 from src.auth import login_user, validate_otp, get_user_info
 from Logic_Manager.Matching.matching_logic import get_next_user
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR.parent / ".env")
+
+pool = create_connection_pool()
+user_repo = UserRepo(pool)
+user_service = UserService(user_repo)
+otp_repo = OTPRepo(pool)
+otp_service = OTPService(otp_repo)
+bot_repo = BotRepo(pool)
+bot_service = BotService(bot_repo)
 
 # Build the editable fields from the same questions used during setup.
 USER_PROFILE_HANDLERS = {}
@@ -26,25 +51,36 @@ for field in profile_setup.PROFILE_FIELDS:
     editable_field["label"] = io_manager.profile_label(field["key"])
     USER_PROFILE_HANDLERS[field["key"]] = editable_field
 
+
 def get_tele_id(update: Update):
     tele_id = update.effective_user.id
     return tele_id
+
 
 async def send_msg(update: Update, message: str):
     await update.effective_message.reply_text(message)
     return
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_msg(update, "Welcome to SITogether!\nUse /login <student_id> to log in, then /setup to complete your profile.")
+    await send_msg(
+        update,
+        "Welcome to SITogether!\nUse /login <student_id> to log in, then /setup to complete your profile.",
+    )
+
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_msg(update, update.message.text)
 
+
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tele_id = get_tele_id(update)
-    bot_user = get_bot_user(tele_id)
+    bot_user = bot_service.get_student_id(tele_id)
     if bot_user is not None:
-        await send_msg(update, "You are already logged in! Use /setup to complete your profile or /profile to view it.")
+        await send_msg(
+            update,
+            "You are already logged in! Use /setup to complete your profile or /profile to view it.",
+        )
         return
     if len(context.args) != 1:
         await send_msg(update, "Usage: /login <student_id>")
@@ -52,92 +88,91 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     student_id = context.args[0]
     # Call the login_user function from auth.py
-    response = await login_user(student_id)
-    if response == 400:
-        await send_msg(update, "Invalid student ID. Please try again.")
-    elif response == 500:
-        await send_msg(update, "Error occurred while sending OTP. Please try again later.")
+    response = otp_service.send_otp(student_id)
+    if response.success:
+        await send_msg(
+            update,
+            "An OTP has been sent to your email. Please check your inbox. \nEnter OTP using the /otp command:\n/otp <student_id> <otp>",
+        )
     else:
-        await send_msg(update, "An OTP has been sent to your email. Please check your inbox. \nEnter OTP using the /otp command:\n/otp <student_id> <otp>")
+        await send_msg(update, response.error_msg)
+
 
 async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 2:
         await send_msg(update, "Usage: /otp <student_id> <otp>")
         return
-    
+
     student_id = context.args[0]
     otp = context.args[1]
     tele_id = get_tele_id(update)
-    result = validate_otp(student_id=student_id, otp=otp)
+    result = otp_service.verify_otp(student_id, otp)
     # print(f"opt res {result}")
-    if result == 200:
-        save_user(tele_id, student_id)
+    if result.success:
+        bot_service.add_bot(student_id, tele_id)
         context.user_data.pop(profile_setup.STATE_KEY, None)
         context.user_data.pop("editing_field", None)
         await send_msg(update, "OTP verified! Send /setup to complete your profile.")
         return
-    if result == 201:
-        save_user(tele_id, student_id)
-        context.user_data.pop(profile_setup.STATE_KEY, None)
-        context.user_data.pop("editing_field", None)
-        await send_msg(update, "Account created! Send /setup to complete your profile.")
-        return
-    if result == 400:
-        await send_msg(update, "Invalid student ID. Please try again.")
-    elif result == 403:
-        await send_msg(update, "Invalid OTP!")
-        return
-    elif result == 404:
-        await send_msg(update, "Error! OTP not found")
-        return
-    elif result == 500:
-        await send_msg(update, "A server error! Contact @nmd_002 for help")
-        return
     else:
-        await send_msg(update, "An unknown error! Contact @nmd_002 for help")
+        await send_msg(update, f"Error! {result.error_msg}")
         return
+
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tele_id = get_tele_id(update)
-    user = get_bot_user(tele_id)
+    user = bot_repo.get_student_id(tele_id)
 
     if user is None:
         await send_msg(update, "You are not logged in! Log in using the /login command")
         return
 
     try:
-      student_id = user["student_id"]
-      if student_id is None:
-          await send_msg(update, "Student ID not found!")
-          return
-      # print("Getting user info")
-      user_result = get_user_info(student_id)
-      if user_result is None or user_result.get("status") == 404:
-          await send_msg(update, "Error! User details not found")
-          return
-      user_details = user_result["user"]
-      reply = "User Details:\n"
-      for key, value in user_details.items():
-          reply += f"{io_manager.profile_label(key)}: {io_manager.profile_value(key, value)}\n"
+        student_id = user["student_id"]
+        if student_id is None:
+            await send_msg(update, "Student ID not found!")
+            return
+        # print("Getting user info")
+        user_result = get_user_info(student_id)
+        if user_result is None or user_result.get("status") == 404:
+            await send_msg(update, "Error! User details not found")
+            return
+        user_details = user_result["user"]
+        reply = "User Details:\n"
+        for key, value in user_details.items():
+            reply += f"{io_manager.profile_label(key)}: {io_manager.profile_value(key, value)}\n"
 
-      btn_list = [[InlineKeyboardButton("Complete / redo profile setup", callback_data="profile_setup")]]
+        btn_list = [
+            [
+                InlineKeyboardButton(
+                    "Complete / redo profile setup", callback_data="profile_setup"
+                )
+            ]
+        ]
 
-      new_row = []
-      for index, (key, value) in enumerate(USER_PROFILE_HANDLERS.items()):
-          if len(new_row) < 2:
-              new_row.append(InlineKeyboardButton(f"Edit {value['label']}", callback_data=f"edit_{key}"))
-              continue
-          btn_list.append(new_row)
-          new_row = []
+        new_row = []
+        for index, (key, value) in enumerate(USER_PROFILE_HANDLERS.items()):
+            if len(new_row) < 2:
+                new_row.append(
+                    InlineKeyboardButton(
+                        f"Edit {value['label']}", callback_data=f"edit_{key}"
+                    )
+                )
+                continue
+            btn_list.append(new_row)
+            new_row = []
 
-      keyboard = InlineKeyboardMarkup(btn_list)
+        keyboard = InlineKeyboardMarkup(btn_list)
 
-      await update.message.reply_text(reply, reply_markup=keyboard)
+        await update.message.reply_text(reply, reply_markup=keyboard)
     except Exception as e:
         # print(f"Error with /profile: {e}")
         await send_msg(update, "An Error occurred, contact nmd_002")
 
-async def edit_profile_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def edit_profile_button_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
     query = update.callback_query
     await query.answer()
 
@@ -145,18 +180,25 @@ async def edit_profile_button_handler(update: Update, context: ContextTypes.DEFA
         await profile_setup.setup(update, context)
         return
     if profile_setup.STATE_KEY in context.user_data:
-        await profile_setup.reply(update, "Finish /save or /cancel your draft before editing individual fields.")
+        await profile_setup.reply(
+            update,
+            "Finish /save or /cancel your draft before editing individual fields.",
+        )
         return
 
     field = query.data
     if field[5:] not in USER_PROFILE_HANDLERS:
         context.user_data.pop("editing_field", None)
-        await query.message.reply_text("This edit option is no longer available. Use /profile to refresh.")
+        await query.message.reply_text(
+            "This edit option is no longer available. Use /profile to refresh."
+        )
         return
     try:
-        user = await asyncio.to_thread(get_bot_user, get_tele_id(update))
+        user = await asyncio.to_thread(bot_repo.get_student_id, get_tele_id(update))
     except Exception:
-        await query.message.reply_text("Could not check your login. Please try again later.")
+        await query.message.reply_text(
+            "Could not check your login. Please try again later."
+        )
         return
     if not user:
         await query.message.reply_text("Please /login before editing your profile.")
@@ -171,12 +213,17 @@ async def edit_profile_button_handler(update: Update, context: ContextTypes.DEFA
         width = 2
         if definition["kind"] == "mbti":
             width = 4
-        keyboard = InlineKeyboardMarkup(profile_setup.option_rows(definition, prefix, width))
-        lines.append("Tap your new answer below, or /cancel to keep the existing value.")
+        keyboard = InlineKeyboardMarkup(
+            profile_setup.option_rows(definition, prefix, width)
+        )
+        lines.append(
+            "Tap your new answer below, or /cancel to keep the existing value."
+        )
         await query.message.reply_text("\n".join(lines), reply_markup=keyboard)
         return
     lines.append("Send your new answer, or /cancel to keep the existing value.")
     await profile_setup.reply(update, "\n".join(lines))
+
 
 async def edit_option_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -238,19 +285,25 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
         raw = update.effective_message.text
     new_value, error = io_manager.validate_field(raw, definition)
     if error:
-        await send_msg(update, f"{error}\nPlease try again, or /cancel to keep the existing value.")
+        await send_msg(
+            update, f"{error}\nPlease try again, or /cancel to keep the existing value."
+        )
         return
     try:
-        user = await asyncio.to_thread(get_bot_user, get_tele_id(update))
+        user = await asyncio.to_thread(bot_repo.get_student_id, get_tele_id(update))
         if not user:
             context.user_data.pop("editing_field", None)
             await send_msg(update, "Please /login before editing your profile.")
             return
         response = await asyncio.to_thread(
             db.save_profile,
-            {"student_id": str(user["student_id"]), key: new_value}, partial=True)
+            {"student_id": str(user["student_id"]), key: new_value},
+            partial=True,
+        )
     except Exception:
-        await send_msg(update, "Could not update your profile. Please try again, or /cancel.")
+        await send_msg(
+            update, "Could not update your profile. Please try again, or /cancel."
+        )
         return
     if response["saved"]:
         context.user_data.pop("editing_field", None)
@@ -261,21 +314,28 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
         await send_msg(update, message + " Please retry your answer, or /cancel.")
     return
 
+
 async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loading_message = await update.message.reply_text("Finding Matches...")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action="typing"
+    )
     tele_id = get_tele_id(update)
-    user = get_bot_user(tele_id)
+    user = bot_repo.get_student_id(tele_id)
     if user is None:
-        await loading_message.edit_text("You are not logged in! Log in using the /login command")
+        await loading_message.edit_text(
+            "You are not logged in! Log in using the /login command"
+        )
         return
     student_id = user["student_id"]
-    
+
     # Get next user
     # If empty, say ran out of ppl
     get_next_user_result = get_next_user(student_id)
     if not get_next_user_result["success"]:
-        return await loading_message.edit_text(f"An error occured: {get_next_user_result["error"]}")
+        return await loading_message.edit_text(
+            f"An error occured: {get_next_user_result["error"]}"
+        )
 
     next_user_response = get_next_user(student_id)
     if not next_user_response["success"]:
@@ -284,20 +344,25 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     get_user_info_response = get_user_info(next_student_id)
     if not get_user_info_response["success"]:
-        return await loading_message.edit_text("An error occured when getting data on student")
+        return await loading_message.edit_text(
+            "An error occured when getting data on student"
+        )
 
     user = get_user_info_response["user"]
     user_profile = ""
-    for field in [
-        "name", "year", "course", "bio", "here_for", "hobbies"
-    ]:
+    for field in ["name", "year", "course", "bio", "here_for", "hobbies"]:
         if user[field]:
             user_profile += f"{io_manager.profile_label(field)}: {user[field]}\n"
-    
-    #TODO: Handle accept/reject
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👍", callback_data=f"accept_{next_student_id}"), InlineKeyboardButton("👎", callback_data=f"reject_{next_student_id}")],
-    ])
+
+    # TODO: Handle accept/reject
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("👍", callback_data=f"accept_{next_student_id}"),
+                InlineKeyboardButton("👎", callback_data=f"reject_{next_student_id}"),
+            ],
+        ]
+    )
 
     await loading_message.edit_text(user_profile, reply_markup=keyboard)
     # Get student profile with student_id
@@ -305,34 +370,40 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Give options "👍" or "👎"
     # If 👍, add to accepted student id -> Check if mutual
 
+
 async def user_accept_handler(update: Update, ContextType: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer
 
     match_id = query.data.split("_", 1)[1]
 
-
-
     await query.edit_message_reply_markup(reply_markup=None)
     await query.message.reply_text(f"Rejected")
 
+
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_msg(update, "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile")
+    await send_msg(
+        update,
+        "COMMANDS\n/login <student_id>: Log in\n/otp <student_id> <otp>: Verify login\n/setup: Complete or redo your profile\n/skip: Skip an optional setup question\n/save: Save the completed draft\n/cancel: Discard the draft\n/profile: View your profile",
+    )
+
 
 async def configure_command_menu(application):
     """Publish the command list used by Telegram's built-in Menu button."""
-    await application.bot.set_my_commands([
-        BotCommand("profile", "View your profile"),
-        BotCommand("setup", "Create or redo your profile"),
-        BotCommand("login", "Log in with your student ID"),
-        BotCommand("otp", "Verify your email login code"),
-        BotCommand("skip", "Skip an optional setup question"),
-        BotCommand("save", "Save your completed profile"),
-        BotCommand("cancel", "Cancel your current draft"),
-        BotCommand("help", "Show instructions and commands"),
-        BotCommand("start", "Show the welcome message"),
-        BotCommand("find_match", "View reccomended profiles")
-    ])
+    await application.bot.set_my_commands(
+        [
+            BotCommand("profile", "View your profile"),
+            BotCommand("setup", "Create or redo your profile"),
+            BotCommand("login", "Log in with your student ID"),
+            BotCommand("otp", "Verify your email login code"),
+            BotCommand("skip", "Skip an optional setup question"),
+            BotCommand("save", "Save your completed profile"),
+            BotCommand("cancel", "Cancel your current draft"),
+            BotCommand("help", "Show instructions and commands"),
+            BotCommand("start", "Show the welcome message"),
+            BotCommand("find_match", "View reccomended profiles"),
+        ]
+    )
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
 
@@ -352,7 +423,11 @@ def run_bot():
     app.add_handler(CommandHandler("find_match", find_match_handler))
     app.add_handler(CallbackQueryHandler(profile_setup.menu_choice, pattern=r"^form:"))
     app.add_handler(CallbackQueryHandler(edit_option_handler, pattern=r"^editpick:"))
-    app.add_handler(CallbackQueryHandler(edit_profile_button_handler, pattern=r"^(profile_setup|edit_.*)$"))
+    app.add_handler(
+        CallbackQueryHandler(
+            edit_profile_button_handler, pattern=r"^(profile_setup|edit_.*)$"
+        )
+    )
     app.add_handler(CallbackQueryHandler(user_accept_handler, pattern=r"^accept_"))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))

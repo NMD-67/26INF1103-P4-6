@@ -16,7 +16,6 @@ from telegram.ext import (
 from dotenv import load_dotenv
 from pathlib import Path
 import os
-import asyncio
 import secrets
 from telegram.error import TelegramError
 from IO_Manager import io_manager
@@ -142,10 +141,9 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         user_details = user_result.get_user_details()
         reply = "User Details:\n"
-        print(type(user_result))
         for key, value in user_details.items():
             if USER_FIELD_CONFIG.get(key) is not None:
-                reply += f"{USER_FIELD_CONFIG[key]["label"]}: {io_manager.profile_value(key, value)}\n"
+                reply += f"{USER_FIELD_CONFIG[key].get("label")}: {io_manager.profile_value(key, value)}\n"
 
         btn_list = [
             [
@@ -200,7 +198,7 @@ async def edit_profile_button_handler(
         )
         return
     try:
-        user = await asyncio.to_thread(bot_repo.get_student_id, get_tele_id(update))
+        user = bot_repo.get_student_id(get_tele_id(update))
     except Exception:
         await query.message.reply_text(
             "Could not check your login. Please try again later."
@@ -326,23 +324,22 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         chat_id=update.effective_chat.id, action="typing"
     )
     tele_id = get_tele_id(update)
-    user = bot_repo.get_student_id(tele_id)
-    if user is None:
+    student_id = bot_repo.get_student_id(tele_id)
+    if student_id is None:
         await loading_message.edit_text(
             "You are not logged in! Log in using the /login command"
         )
         return
-    student_id = user["student_id"]
 
     # Get next user
     # If empty, say ran out of ppl
     next_candidate_result = match_service.get_next_candidate(student_id)
     if not next_candidate_result.success:
         await loading_message.edit_text(
-            f"An Error Occured when getting next candidate {next_candidate_result.error_msg}"
+            f"An Error Occured when getting next candidate, {next_candidate_result.error_msg}"
         )
         return
-    next_candidate = next_candidate_result.data[0]
+    next_candidate = next_candidate_result.data
     if not isinstance(next_candidate, Candidate):
         await loading_message.edit_text(f"Error: Candidate not found!")
         return
@@ -351,7 +348,7 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for field in ["name", "year", "course", "bio", "here_for", "hobbies"]:
         if getattr(next_candidate, field, None):
             user_profile += (
-                f"{io_manager.profile_label(field)}: {next_candidate.field}\n"
+                f"{io_manager.profile_label(field)}: {getattr(next_candidate, field)}\n"
             )
 
     # TODO: Handle accept/reject

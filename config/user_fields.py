@@ -91,6 +91,7 @@ MBTI_TYPES = [
 # Dictionary order controls the order of questions.
 # form_key preserves existing form/Sheets names where PostgreSQL uses another name.
 from models.dealbreaker import DealBreaker
+from models.profile import Profile
 from dataclasses import is_dataclass
 
 USER_FIELD_CONFIG = {
@@ -229,6 +230,7 @@ USER_FIELD_CONFIG = {
         "required": True,
         "kind": "choice",
         "options": ["Male", "Female", "Both"],
+        "class": "dealbreakers",
     },
     "race_preference": {
         "editable": True,
@@ -239,7 +241,9 @@ USER_FIELD_CONFIG = {
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "choice",
-        "options": ["No preference"] + RACES,
+        "options": ["No preference"] + RACES + ["Prefer not to say"],
+        "class": "dealbreakers",
+        "key": "race",
     },
     "religion_preference": {
         "editable": True,
@@ -251,8 +255,10 @@ USER_FIELD_CONFIG = {
         "required": False,
         "kind": "choice",
         "options": ["No preference"] + RELIGIONS,
+        "class": "dealbreakers",
+        "key": "religion",
     },
-    "min_preferred_age": {
+    "min_age": {
         "editable": True,
         "storage": None,
         "type": str,
@@ -262,8 +268,10 @@ USER_FIELD_CONFIG = {
         "required": False,
         "kind": "age",
         "hint": "18-30; Enter for no minimum preference",
+        "class": "dealbreakers",
+        "key": "min_age",
     },
-    "max_preferred_age": {
+    "max_age": {
         "editable": True,
         "storage": None,
         "type": str,
@@ -273,6 +281,8 @@ USER_FIELD_CONFIG = {
         "required": False,
         "kind": "age",
         "hint": "18-30; Enter for no maximum preference",
+        "class": "dealbreakers",
+        "key": "max_age",
     },
     "here_for": {
         "editable": True,
@@ -358,7 +368,7 @@ USER_FIELD_CONFIG = {
         "kind": "list",
         "hint": "comma-separated, at least one",
     },
-    "interests": {
+    "interest_groups": {
         "editable": True,
         "storage": "interests",
         "type": list,
@@ -371,6 +381,12 @@ USER_FIELD_CONFIG = {
         "required": False,
         "kind": "list",
         "hint": "comma-separated",
+    },
+    "dealbreakers": {
+        "storage": "dealbreakers",
+        "label": "Deal Breakers",
+        "type": DealBreaker,
+        "exclusive_to": Profile,
     },
 }
 
@@ -389,24 +405,14 @@ REPOSITORY_FIELD_CONFIG = {
 }
 
 SCALAR_FIELDS = [
-    key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] != list
+    key
+    for key, settings in REPOSITORY_FIELD_CONFIG.items()
+    if settings["type"] != list and settings["type"] != DealBreaker
 ]
 LIST_FIELDS = [
     key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] == list
 ]
 
-CLASS_FIELDS = {
-    "dealbreakers": {
-        "editable": True,
-        "storage": "dealbreakers",
-        "type": DealBreaker,
-    }
-}
+CLASS_FIELDS = ["dealbreakers"]
 
-DEAL_BREAKER_CONFIG = {
-    "min_age",
-    "max_age",
-    "religion",
-    "race",
-    "gender",
-}
+DEAL_BREAKER_CONFIG = {"min_age", "max_age", "religion", "race", "gender"}

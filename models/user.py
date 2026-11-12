@@ -43,5 +43,7 @@ class User:
 
     def print_user_details(self) -> None:
         user_obj = self.get_user_details()
+        print("=============================")
         for attr, value in user_obj.items():
             print(f"{attr}: {value}")
+        print("=============================")

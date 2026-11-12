@@ -55,7 +55,7 @@ class UserRepo:
         #Attributes to update eg.
         "name": str,
         "hobbies": list[str],
-        "deal_breakers": DealBreakers
+        "dealbreakers": DealBreakers
         }"""
         if not fields:
             return False
@@ -67,6 +67,8 @@ class UserRepo:
         class_fields = {
             field: value for field, value in fields.items() if field in CLASS_FIELDS
         }
+
+        print(f"Fields: {fields}, {fields.items()}, {class_fields}")
 
         assignments = ", ".join(
             f"{field} = %s"
@@ -127,33 +129,53 @@ class UserRepo:
                 )
             for field in class_fields:
                 # Check if the provided class matches config class
-                expected_type = CLASS_FIELDS[field]["type"]
-                provided_class = fields[field]
-                if not isinstance(provided_class, expected_type):
-                    raise TypeError(f"{field} must be a {expected_type.__name__} object.")
-                if isinstance(provided_class, expected_type):
-                    updated_data = provided_class.to_row()
-                    table_name = CLASS_FIELDS[field]["storage"]
-                    column_names = list(updated_data)
-                    columns = ", ".join(column for column in column_names)
-                    values = list(updated_data.values())
-                    placeholders = ", ".join(["%s"] * len(values))
-                    print(f"Placeholders: {placeholders}, values: {values}")
-                    sets = ", ".join(
-                        f"{column} = EXCLUDED.{column}" for column in column_names
-                    )
-                    result = conn.execute(
-                        f"""
-                    INSERT INTO {table_name} (student_id, {columns}) VALUES (%s, {placeholders})
-                    ON CONFLICT (student_id) DO UPDATE SET {sets}
-                    RETURNING student_id
-                    """,
-                        (
-                            student_id,
-                            *values,
-                        ),
-                    )
-                    print(f"Insert into {table_name}: {result}")
+                updated_values = fields[field]
+                table_name = USER_FIELD_CONFIG[field]["storage"]
+                column_names = list(updated_values)
+
+                columns = ", ".join(column for column in column_names)
+                values = list(updated_values.values())
+                print(f"column_names: {column_names}, {values}")
+                placeholders = ", ".join(["%s"] * len(values))
+                sets = ", ".join(
+                    f"{column} = EXCLUDED.{column}" for column in column_names
+                )
+                result = conn.execute(
+                    f"""
+                INSERT INTO {table_name} (student_id, {columns}) VALUES (%s, {placeholders})
+                ON CONFLICT (student_id) DO UPDATE SET {sets}
+                RETURNING student_id
+                """,
+                    (
+                        student_id,
+                        *values,
+                    ),
+                )
+                # expected_type = USER_FIELD_CONFIG[field]["type"]
+                # provided_class = fields[field]
+                # if isinstance(provided_class, expected_type):
+                #     updated_data = provided_class.to_row()
+                #     table_name = USER_FIELD_CONFIG[field]["storage"]
+                #     column_names = list(updated_data)
+                #     columns = ", ".join(column for column in column_names)
+                #     values = list(updated_data.values())
+                #     placeholders = ", ".join(["%s"] * len(values))
+                #     print(f"Placeholders: {placeholders}, values: {values}")
+                #     sets = ", ".join(
+                #         f"{column} = EXCLUDED.{column}" for column in column_names
+                #     )
+                #     result = conn.execute(
+                #         f"""
+                #     INSERT INTO {table_name} (student_id, {columns}) VALUES (%s, {placeholders})
+                #     ON CONFLICT (student_id) DO UPDATE SET {sets}
+                #     RETURNING student_id
+                #     """,
+                #         (
+                #             student_id,
+                #             *values,
+                #         ),
+                #     )
+                #     print(f"Insert into {table_name}: {result}")
 
             return result is not None
 
@@ -199,7 +221,6 @@ class UserRepo:
 
     def get_profile(self, student_id: str) -> Profile | None:
         user = self.get_user(student_id)
-
         if user is not None:
             with self.pool.connection() as conn:
                 row = conn.execute(
@@ -211,18 +232,20 @@ class UserRepo:
                     (student_id,),
                 ).fetchone()
 
-                filtered_row = {
-                    key: value
-                    for key, value in (row or {}).items()
-                    if key in DEAL_BREAKER_CONFIG
-                }
+                if row is not None:
+                    filtered_row = {
+                        key: value
+                        for key, value in row.items()
+                        if key in DEAL_BREAKER_CONFIG
+                    }
 
-                base_user = {
-                    field: value for field, value in user.get_user_details().items()
-                }
+                    # print(f"\nfiltered row: {filtered_row}, row: {row}\n")
 
-                print(f"Row: {row}")
-                return Profile(**base_user, dealbreakers=filtered_row)
+                    base_user = {
+                        field: value for field, value in user.get_user_details().items()
+                    }
+                    return Profile(**base_user, dealbreakers=filtered_row)
+                return Profile(**user.get_user_details())
 
     def delete(self, student_id: str) -> bool:
         with self.pool.connection() as conn:

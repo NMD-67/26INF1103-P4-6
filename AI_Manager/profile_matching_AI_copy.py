@@ -1,325 +1,212 @@
 """
-AI Manager: scores compatibility between two User objects.
+AI Profile Matching
+--------------------
+Scores compatibility between a given main user and every other user via
+the Groq API, and writes the results back to the "matches" tab.
 
-Pipeline per pair:
-    User, User -> PromptBuilder -> AIClient -> ResponseParser -> ResponseValidator -> Match
 """
 
-import json
-import logging
-import math
 import os
+import json
+import math
 import time
-from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass
+import logging
 
 import groq
 from groq import Groq
+from dotenv import load_dotenv
 
-from user import User  # adjust to wherever your User class lives
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+ 
+def get_groq_client():
+    api_key = os.getenv("PROFILE_MATCHING_API_KEY") or os.getenv("GROQ_API_KEY")
+    if not api_key or not api_key.strip():
+        raise RuntimeError(
+            "Missing Groq API key. Set PROFILE_MATCHING_API_KEY or GROQ_API_KEY."
+        )
+    try:
+        return Groq(api_key=api_key.strip(), timeout=30.0)
+    except Exception as e:
+        raise RuntimeError(f"Failed to create Groq client: {e}") from e
+
+from models.user import User
+
+# Only fields that exist on User. No name, student_id, or handles:
+# the AI doesn't need identifying info to score compatibility.
+FIELDS_FOR_AI = [
+    "age", "gender", "course", "bio", "religion", "mbti",
+    "match_preference", "here_for", "expectations",
+    "ccas", "events", "hobbies", "interest_groups",
+]
+
+LIST_FIELDS = ("ccas", "events", "hobbies", "interest_groups")
+
+def to_user(profile) -> User:
+    """Accepts a User or a raw sheet row (dict) and returns a User."""
+    if isinstance(profile, User):
+        return profile
+    if not isinstance(profile, dict):
+        raise ValueError(f"Profile must be a User or dict, got {type(profile).__name__}")
+
+    data = profile.copy()
+    # Sheets usually store lists as "a, b, c" strings (or "" when empty)
+    for key in LIST_FIELDS:
+        value = data.get(key)
+        if isinstance(value, str):
+            data[key] = [v.strip() for v in value.split(",") if v.strip()]
+    return User.from_dict(data)
 
 
-# ======================================================================
-# Exceptions (these feed the exception-handling matrix)
-# ======================================================================
-class AIError(Exception):
-    """Base class for all AI Manager errors."""
+def user_to_ai_dict(user: User) -> dict:
+    """The subset of a User that gets sent to the AI. None becomes ''."""
+    details = user.get_user_details()
+    return {f: details.get(f) if details.get(f) is not None else "" for f in FIELDS_FOR_AI}
 
+# Call GROQ AI to get a compatibility score for a pair of profiles
+def get_compatibility_score(client, main_user: User, candidate: User):
+    """Scores ONE pair of Users. Returns an int 0-100, or None on failure. Never raises."""
 
-class AIPermanentError(AIError):
-    """Retrying cannot help (bad key, bad request, wrong input type)."""
+    max_attempts = 3
 
+    if client is None:
+        logger.error("No Groq client supplied")
+        return None
 
-class AIRetryableError(AIError):
-    """Transient problem; worth retrying."""
+    try:
+        main_user = to_user(main_user)
+        candidate = to_user(candidate)
+    except (ValueError, TypeError) as e:
+        logger.warning("Skipping: bad profile data: %s", e)
+        return None
 
+    candidate_id = candidate.student_id
 
-class AIConnectionError(AIRetryableError):
-    """Timeout, rate limit, 5xx, network failure."""
-
-
-class AIResponseError(AIRetryableError):
-    """Empty, truncated or otherwise unusable response."""
-
-
-class AIParseError(AIResponseError):
-    """Response is not valid JSON / not a JSON object."""
-
-
-class AISchemaError(AIResponseError):
-    """JSON is valid but fields are missing, wrong type or out of range."""
-
-
-# ======================================================================
-# AI client: interface -> abstract base -> concrete implementations
-# ======================================================================
-class AIClient(ABC):
-    """Interface: anything that can turn (system, user) prompts into raw text."""
-
-    @abstractmethod
-    def complete(self, system: str, user: str) -> str: ...
-
-    def close(self) -> None:
-        pass
-
-
-class BaseAIClient(AIClient):
-    """Abstract base: shared empty-response check; subclasses implement _send()."""
-
-    def complete(self, system: str, user: str) -> str:
-        raw = self._send(system, user)
-        if not isinstance(raw, str) or not raw.strip():
-            raise AIResponseError("Response content was empty")
-        return raw.strip()
-
-    @abstractmethod
-    def _send(self, system: str, user: str) -> str: ...
-
-
-class GroqAIClient(BaseAIClient):
-    _PERMANENT = (
-        groq.AuthenticationError,
-        groq.PermissionDeniedError,
-        groq.BadRequestError,
-        groq.NotFoundError,
-        groq.UnprocessableEntityError,
-    )
-    _TRANSIENT = (
-        groq.APIConnectionError,
-        groq.APITimeoutError,
-        groq.RateLimitError,
-        groq.InternalServerError,
+    instructions = (
+    "You compare two user dating/matching profiles and return a single "
+    "compatibility score from 0 to 100, based on shared interests, "
+    "lifestyle, and stated preferences. "
+    "Respond ONLY with valid JSON in this exact format, no other text: "
+    '{"score": <integer 0-100>}'
     )
 
-    def __init__(self, model: str = "openai/gpt-oss-20b", timeout: float = 30.0):
-        key = os.getenv("PROFILE_MATCHING_API_KEY") or os.getenv("GROQ_API_KEY")
-        if not key or not key.strip():
-            raise AIPermanentError(
-                "Missing Groq API key. Set PROFILE_MATCHING_API_KEY or GROQ_API_KEY."
-            )
-        self._model = model
-        self.__client = Groq(api_key=key.strip(), timeout=timeout)  # private
+    try:
+        payload = {
+            "profile_a": user_to_ai_dict(main_user),
+            "profile_b": user_to_ai_dict(candidate),
+        }
+        user_content = json.dumps(payload, default=str)
+    except Exception:
+        logger.exception("Unexpected error building prompt for candidate %s", candidate_id)
+        return None
 
-    def _send(self, system: str, user: str) -> str:
+    for attempt in range(1, max_attempts + 1):
         try:
-            resp = self.__client.chat.completions.create(
-                model=self._model,
+            response = client.chat.completions.create(
+                model="openai/gpt-oss-20b",
                 max_completion_tokens=1024,
                 reasoning_effort="low",
-                temperature=0,
                 response_format={"type": "json_object"},
+                temperature=0,
                 messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_content}
+                ]
             )
-        except self._PERMANENT as e:
-            raise AIPermanentError(f"{type(e).__name__}: {e}") from e
-        except self._TRANSIENT as e:
-            raise AIConnectionError(f"{type(e).__name__}: {e}") from e
+
+            # --- Validate the response (any failure raises ValueError -> retry) ---
+            choices = getattr(response, "choices", None)
+            if not choices:
+                raise ValueError("Response contained no choices")
+
+            choice = choices[0]
+            if getattr(choice, "finish_reason", None) == "length":
+                raise ValueError("Response truncated (hit token limit)")
+
+            raw = getattr(getattr(choice, "message", None), "content", None)
+            if not isinstance(raw, str) or not raw.strip():
+                raise ValueError("Response content was empty")
+
+            try:
+                parsed = json.loads(raw.strip())
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Response was not valid JSON: {e}") from e
+
+            if not isinstance(parsed, dict):
+                raise ValueError(f"Expected a JSON object, got {type(parsed).__name__}")
+            if "score" not in parsed:
+                raise ValueError("JSON missing 'score' key")
+
+            score = parsed["score"]
+            if isinstance(score, bool) or not isinstance(score, (int, float)):
+                raise ValueError(f"Score is not a number: {score!r}")
+            if isinstance(score, float) and not math.isfinite(score):
+                raise ValueError(f"Score is not finite: {score!r}")
+            if not (0 <= score <= 100):
+                raise ValueError(f"Score out of range: {score}")
+
+            return int(round(score))
+
+        except ValueError as e:
+            # Malformed model output: retry
+            logger.warning(
+                "Malformed response for candidate %s (attempt %d/%d): %s",
+                candidate_id, attempt, max_attempts, e
+            )
+
+        except (groq.AuthenticationError, groq.PermissionDeniedError,
+                groq.BadRequestError, groq.NotFoundError,
+                groq.UnprocessableEntityError) as e:
+            # Permanent errors: retrying cannot fix these
+            logger.error(
+                "Permanent API error for candidate %s, not retrying: %s: %s",
+                candidate_id, type(e).__name__, e
+            )
+            return None
+
+        except (groq.APIConnectionError, groq.APITimeoutError,
+                groq.RateLimitError, groq.InternalServerError) as e:
+            # Transient errors: retry
+            logger.warning(
+                "Transient API error for candidate %s (attempt %d/%d): %s: %s",
+                candidate_id, attempt, max_attempts, type(e).__name__, e
+            )
+
         except groq.APIStatusError as e:
-            raise AIPermanentError(f"API status {getattr(e, 'status_code', '?')}: {e}") from e
+            logger.error(
+                "API status error %s for candidate %s: %s",
+                getattr(e, "status_code", "?"), candidate_id, e
+            )
+            return None
+
         except groq.GroqError as e:
-            raise AIPermanentError(f"{type(e).__name__}: {e}") from e
+            logger.error(
+                "Groq SDK error for candidate %s: %s: %s",
+                candidate_id, type(e).__name__, e
+            )
+            return None
 
-        if not resp.choices:
-            raise AIResponseError("Response contained no choices")
-        choice = resp.choices[0]
-        if getattr(choice, "finish_reason", None) == "length":
-            raise AIResponseError("Response truncated (hit token limit)")
-        return choice.message.content
+        except Exception:
+            logger.exception("Unexpected error scoring candidate %s", candidate_id)
+            return None
 
-    def close(self) -> None:
-        self.__client.close()
+        # Wait before the next attempt (1s, 2s, ...)
+        if attempt < max_attempts:
+            time.sleep(2 ** (attempt - 1))
 
+    logger.error("Giving up on candidate %s after %d attempts", candidate_id, max_attempts)
+    return None
 
-class MockAIClient(AIClient):
-    """For tests. Pass strings (returned) or Exceptions (raised), in order.
-    The last item repeats once the queue is down to one."""
+if __name__ == "__main__":
+    a = User(student_id="1", name="Alex", age=21, gender="M", course="CS",
+             mbti="INTJ", hobbies=["climbing", "chess"], here_for="Something long-term")
+    b = User(student_id="2", name="Sam", age=22, gender="F", course="Data Science",
+             mbti="ENFP", hobbies=["climbing", "baking"], here_for="Something long-term")
+    c = User(student_id="3", name="Jo", age=40, gender="F", course="Law",
+         mbti="ESTP", hobbies=["clubbing"], here_for="Something casual")
 
-    def __init__(self, *responses):
-        self._queue = list(responses)
-        self.calls = 0
-
-    def complete(self, system: str, user: str) -> str:
-        self.calls += 1
-        item = self._queue.pop(0) if len(self._queue) > 1 else self._queue[0]
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-
-# ======================================================================
-# User -> AI-facing data
-# ======================================================================
-class UserSerializer:
-    """Selects the fields the AI is allowed to see from a User."""
-
-    def serialize(self, user: User) -> dict:
-        if not isinstance(user, User):
-            raise AIPermanentError(f"Expected User, got {type(user).__name__}")
-        return {
-            "horoscope": getattr(user, "horoscope", None) or "",
-            "mbti": user.mbti or "",
-            "bio": user.bio or "",
-            "expectations": user.expectations or "",
-            "ccas": list(user.ccas or []),
-            "events": list(user.events or []),
-            "hobbies": list(user.hobbies or []),
-            "interest_groups": list(user.interest_groups or []),
-        }
-
-
-# ======================================================================
-# Prompt / parse / validate (one job each)
-# ======================================================================
-class PromptBuilder:
-    SYSTEM = (
-        "You compare two student profiles and return a single compatibility "
-        "score from 0 to 100, plus a short reason (one or two sentences) "
-        "explaining the score. Consider horoscope, MBTI, bio, expectations, "
-        "CCAs, events, hobbies and interest groups. "
-        "Respond ONLY with valid JSON in this exact format, no other text: "
-        '{"score": <number 0-100>, "reason": "<short explanation>"}'
-    )
-
-    def __init__(self):
-        self._serializer = UserSerializer()  # composition
-
-    def build(self, a: User, b: User) -> tuple[str, str]:
-        payload = {
-            "profile_a": self._serializer.serialize(a),
-            "profile_b": self._serializer.serialize(b),
-        }
-        return self.SYSTEM, json.dumps(payload, default=str)
-
-
-class ResponseParser:
-    def parse(self, raw: str) -> dict:
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as e:
-            raise AIParseError(f"Response was not valid JSON: {e}") from e
-        if not isinstance(data, dict):
-            raise AIParseError(f"Expected a JSON object, got {type(data).__name__}")
-        return data
-
-
-@dataclass(frozen=True)
-class AIScore:
-    """Validated AI output for one pair (internal to the AI Manager)."""
-    score: float
-    reason: str
-
-
-@dataclass(frozen=True)
-class Match:
-    """The result returned by the AI Manager for one pair of users.
-    Refers to users by student_id only (association, no ownership)."""
-    student_id: str            # the user being matched
-    matched_user: str          # student_id of the candidate
-    compatibility_score: float
-    reason: str
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-class ResponseValidator:
-    MAX_REASON_LENGTH = 300
-
-    def validate(self, data: dict) -> AIScore:
-        if "score" not in data:
-            raise AISchemaError("JSON missing 'score' key")
-        if "reason" not in data:
-            raise AISchemaError("JSON missing 'reason' key")
-
-        score = data["score"]
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
-            raise AISchemaError(f"Score is not a number: {score!r}")
-        if isinstance(score, float) and not math.isfinite(score):
-            raise AISchemaError(f"Score is not finite: {score!r}")
-        if not 0 <= score <= 100:
-            raise AISchemaError(f"Score out of range: {score}")
-
-        reason = data["reason"]
-        if not isinstance(reason, str) or not reason.strip():
-            raise AISchemaError(f"Reason is missing or not text: {reason!r}")
-
-        return AIScore(float(score), reason.strip()[: self.MAX_REASON_LENGTH])
-
-
-class RetryPolicy:
-    """Retries AIRetryableError with 1s, 2s, ... backoff. Never retries others."""
-
-    def __init__(self, max_attempts: int = 3, sleep=time.sleep):
-        self._max_attempts = max_attempts
-        self._sleep = sleep  # injectable so tests don't wait
-
-    def run(self, fn):
-        for attempt in range(1, self._max_attempts + 1):
-            try:
-                return fn()
-            except AIRetryableError as e:
-                logger.warning("Attempt %d/%d failed: %s", attempt, self._max_attempts, e)
-                if attempt == self._max_attempts:
-                    raise
-                self._sleep(2 ** (attempt - 1))
-
-
-# ======================================================================
-# The manager
-# ======================================================================
-class AIManager:
-    def __init__(self, client: AIClient, retry: RetryPolicy | None = None):
-        self._client = client                 # aggregation (injected, swappable)
-        self._prompts = PromptBuilder()       # composition
-        self._parser = ResponseParser()       # composition
-        self._validator = ResponseValidator() # composition
-        self._retry = retry or RetryPolicy()  # composition
-
-    def match_pair(self, main: User, candidate: User) -> Match:
-        """Returns a Match for one pair. Raises AIError if it cannot be scored."""
-        system, user = self._prompts.build(main, candidate)  # bad input fails fast
-
-        def attempt() -> AIScore:
-            raw = self._client.complete(system, user)
-            return self._validator.validate(self._parser.parse(raw))
-
-        ai_score = self._retry.run(attempt)
-        return Match(
-            student_id=main.student_id,
-            matched_user=candidate.student_id,
-            compatibility_score=ai_score.score,
-            reason=ai_score.reason,
-        )
-
-    def match_candidates(self, main: User, candidates: list[User]) -> list[Match]:
-        """Returns Matches for every candidate that could be scored, highest score first.
-        A failing candidate is skipped and logged. Raises AIPermanentError
-        (e.g. bad API key) because every candidate would fail."""
-        matches: list[Match] = []
-        for candidate in candidates:
-            try:
-                matches.append(self.match_pair(main, candidate))
-            except AIPermanentError:
-                raise
-            except AIError as e:
-                logger.warning("Skipped candidate %s: %s", candidate.student_id, e)
-        matches.sort(key=lambda m: m.compatibility_score, reverse=True)
-        return matches
-
-
-# ======================================================================
-# Usage
-# ======================================================================
-# client = GroqAIClient()
-# try:
-#     manager = AIManager(client)
-#     matches = manager.match_candidates(main_user, candidate_users)
-# finally:
-#     client.close()
-#
-# rows = [m.to_dict() for m in matches]   # hand to the Data Manager
+    client = get_groq_client()
+    print("A vs B:", get_compatibility_score(client, a, b))
+    print("A vs C:", get_compatibility_score(client, a, c))
+    client.close()

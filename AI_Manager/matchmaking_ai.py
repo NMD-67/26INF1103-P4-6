@@ -148,7 +148,7 @@ class MatchmakingAIManager:
         primary_key = os.getenv('MATCHMAKING_API_KEY')
         if not primary_key:
             raise RuntimeError('MATCHMAKING_API_KEY is not configured')
-        backup_key = os.getenv('MATCHMAKING_BACKUP_API_KEY')
+        backup_key = os.getenv('RAPH_AI_KEY')
         primary = GroqAIProvider(primary_key)
         backup = (GroqAIProvider(backup_key)
                   if backup_key and backup_key != primary_key else None)

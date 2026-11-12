@@ -24,7 +24,10 @@ def main():
     from IO_Manager.console_io import ConsoleIO
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
     from AI_Manager.profile_matching_AI_copy import AIManager, GroqAIClient
-    from AI_Manager import matchmaking_ai
+    from AI_Manager.matchmaking_ai import (
+    MatchmakingAIManager,
+    ConnectionSuggestionService
+)
 
     pool = create_connection_pool()
     client = None
@@ -34,7 +37,8 @@ def main():
         otp = OTPService(OTPRepo(pool))
         client = GroqAIClient()
         scoring = AIManager(client)
-        matchmaking_ai.configure_services(matches, users)
+        ai_manager = MatchmakingAIManager.from_environment()
+        matchmaking_ai = ConnectionSuggestionService(matches, users, ai_manager)
         logic = ProfileLogicManager(PROFILE_FIELDS)
         console = ConsoleIO(PROFILE_FIELDS, logic)
         app = SITogetherApp(

@@ -91,6 +91,7 @@ MBTI_TYPES = [
 # Dictionary order controls the order of questions.
 # form_key preserves existing form/Sheets names where PostgreSQL uses another name.
 from models.dealbreaker import DealBreaker
+from models.profile import Profile
 from dataclasses import is_dataclass
 
 USER_FIELD_CONFIG = {
@@ -117,7 +118,7 @@ USER_FIELD_CONFIG = {
     },
     "birthday": {
         "editable": True,
-        "storage": "users",
+        "storage": None,
         "type": str,
         "question": "When is your birthday?",
         "label": "Birthday",
@@ -125,6 +126,23 @@ USER_FIELD_CONFIG = {
         "required": True,
         "kind": "date",
         "hint": "DD/MM/YYYY",
+    },
+    # Derived from the birthday locally and saved; not asked as separate questions.
+    "age": {
+        "label": "Age",
+        "section": SECTION_BACKGROUND,
+        "editable": True,
+        "storage": "users",
+        "type": int,
+        "derived": True,
+    },
+    "horoscope": {
+        "label": "Horoscope",
+        "section": SECTION_BACKGROUND,
+        "editable": True,
+        "storage": "users",
+        "type": str,
+        "derived": True,
     },
     "gender": {
         "editable": True,
@@ -216,6 +234,7 @@ USER_FIELD_CONFIG = {
         "required": True,
         "kind": "choice",
         "options": ["Male", "Female", "Both"],
+        "class": "dealbreakers",
     },
     "race_preference": {
         "editable": True,
@@ -226,7 +245,9 @@ USER_FIELD_CONFIG = {
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "choice",
-        "options": ["No preference"] + RACES,
+        "options": ["No preference"] + RACES + ["Prefer not to say"],
+        "class": "dealbreakers",
+        "key": "race",
     },
     "religion_preference": {
         "editable": True,
@@ -238,8 +259,10 @@ USER_FIELD_CONFIG = {
         "required": False,
         "kind": "choice",
         "options": ["No preference"] + RELIGIONS,
+        "class": "dealbreakers",
+        "key": "religion",
     },
-    "min_preferred_age": {
+    "min_age": {
         "editable": True,
         "storage": None,
         "type": str,
@@ -249,8 +272,10 @@ USER_FIELD_CONFIG = {
         "required": False,
         "kind": "age",
         "hint": "18-30; Enter for no minimum preference",
+        "class": "dealbreakers",
+        "key": "min_age",
     },
-    "max_preferred_age": {
+    "max_age": {
         "editable": True,
         "storage": None,
         "type": str,
@@ -260,6 +285,8 @@ USER_FIELD_CONFIG = {
         "required": False,
         "kind": "age",
         "hint": "18-30; Enter for no maximum preference",
+        "class": "dealbreakers",
+        "key": "max_age",
     },
     "here_for": {
         "editable": True,
@@ -345,7 +372,7 @@ USER_FIELD_CONFIG = {
         "kind": "list",
         "hint": "comma-separated, at least one",
     },
-    "interests": {
+    "interest_groups": {
         "editable": True,
         "storage": "interests",
         "type": list,
@@ -359,12 +386,26 @@ USER_FIELD_CONFIG = {
         "kind": "list",
         "hint": "comma-separated",
     },
+    "dealbreakers": {
+        "storage": "dealbreakers",
+        "label": "Deal Breakers",
+        "type": DealBreaker,
+        "exclusive_to": Profile,
+    },
 }
 
 # This is a generated view, not a second handwritten schema.
 PROFILE_FIELDS = [
     {"key": settings.get("form_key", key), **settings}
     for key, settings in USER_FIELD_CONFIG.items()
+    if not settings.get("derived", False)
+]
+
+# Display derived values in the profile without adding input questions.
+PROFILE_DISPLAY_FIELDS = [
+    {"key": settings.get("form_key", key), **settings}
+    for key, settings in USER_FIELD_CONFIG.items()
+    if key != "birthday"
 ]
 
 # Do not make existing SQL queries request columns that have not been migrated yet.
@@ -375,24 +416,14 @@ REPOSITORY_FIELD_CONFIG = {
 }
 
 SCALAR_FIELDS = [
-    key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] != list
+    key
+    for key, settings in REPOSITORY_FIELD_CONFIG.items()
+    if settings["type"] != list and settings["type"] != DealBreaker
 ]
 LIST_FIELDS = [
     key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] == list
 ]
 
-CLASS_FIELDS = {
-    "dealbreakers": {
-        "editable": True,
-        "storage": "dealbreakers",
-        "type": DealBreaker,
-    }
-}
+CLASS_FIELDS = ["dealbreakers"]
 
-DEAL_BREAKER_CONFIG = {
-    "min_age",
-    "max_age",
-    "religion",
-    "race",
-    "gender",
-}
+DEAL_BREAKER_CONFIG = {"min_age", "max_age", "religion", "race", "gender"}

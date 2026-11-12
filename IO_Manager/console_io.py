@@ -1,5 +1,5 @@
 """Own console interaction; delegate validation and profile rules to objects."""
-from config.user_fields import PROFILE_FIELDS
+from config.user_fields import PROFILE_FIELDS, PROFILE_DISPLAY_FIELDS
 from Logic_Manager.profile_logic_manager import ProfileLogicManager
 from IO_Manager.profile_validator import ProfileValidator
 
@@ -119,6 +119,12 @@ class ConsoleIO:
         if isinstance(value, list):
             return ", ".join(value)
         return str(value)
+
+    def show_profile(self, profile):
+        display_profile = profile.copy()
+        if display_profile.get("birthday"):
+            display_profile.update(self._logic.process_birthday(display_profile["birthday"]))
+        self.show_profile_summary(display_profile, PROFILE_DISPLAY_FIELDS)
 
     def show_profile_summary(self, profile, fields):
         current_section = None

@@ -55,7 +55,16 @@ new_dealbreakers = DealBreaker(
     gender="Male",
 )
 update_dealbreakers_result = user_service.update_user(
-    test_user.student_id, {"deal_breakers": new_dealbreakers}
+    test_user.student_id,
+    {
+        "dealbreakers": {
+            "min_age": 6,
+            "max_age": 67,
+            "religion": ["Muslim", "Christian"],
+            "race": ["Malay", "Indian"],
+            "gender": "Male",
+        }
+    },
 )
 if update_dealbreakers_result.success:
     print(f"User dealbreakers updated success")

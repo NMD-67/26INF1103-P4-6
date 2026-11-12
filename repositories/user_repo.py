@@ -55,7 +55,7 @@ class UserRepo:
         #Attributes to update eg.
         "name": str,
         "hobbies": list[str],
-        "deal_breakers": DealBreakers
+        "dealbreakers": DealBreakers
         }"""
         if not fields:
             return False
@@ -67,6 +67,8 @@ class UserRepo:
         class_fields = {
             field: value for field, value in fields.items() if field in CLASS_FIELDS
         }
+
+        print(f"Fields: {fields}, {fields.items()}, {class_fields}")
 
         assignments = ", ".join(
             f"{field} = %s"
@@ -138,7 +140,6 @@ class UserRepo:
                     columns = ", ".join(column for column in column_names)
                     values = list(updated_data.values())
                     placeholders = ", ".join(["%s"] * len(values))
-                    print(f"Placeholders: {placeholders}, values: {values}")
                     sets = ", ".join(
                         f"{column} = EXCLUDED.{column}" for column in column_names
                     )
@@ -153,7 +154,6 @@ class UserRepo:
                             *values,
                         ),
                     )
-                    print(f"Insert into {table_name}: {result}")
 
             return result is not None
 
@@ -199,7 +199,6 @@ class UserRepo:
 
     def get_profile(self, student_id: str) -> Profile | None:
         user = self.get_user(student_id)
-
         if user is not None:
             with self.pool.connection() as conn:
                 row = conn.execute(
@@ -221,7 +220,6 @@ class UserRepo:
                     field: value for field, value in user.get_user_details().items()
                 }
 
-                print(f"Row: {row}")
                 return Profile(**base_user, dealbreakers=filtered_row)
 
     def delete(self, student_id: str) -> bool:

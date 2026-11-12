@@ -6,7 +6,8 @@ from models.dealbreaker import DealBreaker
 class User:
     student_id: str
     name: str = None
-    birthday: int = None
+    age: int = None
+    horoscope: str = None
     gender: str = None
     year: int = None
     course: str = None
@@ -42,5 +43,7 @@ class User:
 
     def print_user_details(self) -> None:
         user_obj = self.get_user_details()
+        print("=============================")
         for attr, value in user_obj.items():
             print(f"{attr}: {value}")
+        print("=============================")

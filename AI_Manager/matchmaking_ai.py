@@ -58,10 +58,13 @@ Student B profile:
 
 Respond ONLY with a JSON object with exactly these three keys:
 {{"common_interests": ["..."], "conversation_starters": ["..."], "outing_ideas": ["..."]}}
-Each key should contain 3-{MAX_ITEMS_PER_LIST} concise, appropriate strings.
-Base all suggestions only on provided data and do not invent facts. For common_interests,
-start with genuine overlaps; if none, identify related/complementary interests without
-claiming they're identical. Write conversation starters as natural direct questions.
+Each key should contain 1-{MAX_ITEMS_PER_LIST} concise, appropriate strings.
+Prioritise accuracy over quantity; return fewer items when there is not enough
+profile information to support more. Base all suggestions only on provided data
+and do not invent facts. For common_interests, start with genuine overlaps; if
+none exist, identify real related/complementary interests without claiming
+they are identical. Do not invent shared interests to fill the list.
+Write conversation starters as natural direct questions.
 Do not mention student names or labels Student A / Student B in the suggestions.'''
 
 
@@ -139,6 +142,18 @@ class MatchmakingAIManager:
         self._validator = validator or ResponseValidator()
         self._sleep = sleep
 
+    @classmethod
+    def from_environment(cls) -> 'MatchmakingAIManager':
+        """Configure the primary and optional backup Groq provider from .env."""
+        primary_key = os.getenv('MATCHMAKING_API_KEY')
+        if not primary_key:
+            raise RuntimeError('MATCHMAKING_API_KEY is not configured')
+        backup_key = os.getenv('MATCHMAKING_BACKUP_API_KEY')
+        primary = GroqAIProvider(primary_key)
+        backup = (GroqAIProvider(backup_key)
+                  if backup_key and backup_key != primary_key else None)
+        return cls(primary=primary, backup=backup)
+
     def generate_suggestions(self, profile_a: dict, profile_b: dict) -> dict:
         try:
             prompt = self._prompt_builder.build_prompt(profile_a, profile_b)
@@ -180,22 +195,6 @@ class MatchmakingAIManager:
         return {'success': False, 'error': f'Unable to generate suggestions ({last_error})'}
 
 
-def _profile_dict(user) -> dict:
-    """Convert actual models.user.User (or legacy dictionaries) to a profile."""
-    if isinstance(user, dict):
-        return user.copy()
-    # The latest models.User and models.Profile are dataclasses.
-    # Prefer dataclass conversion because Profile.get_user_details()
-    # currently returns only the base fields.
-    if is_dataclass(user) and not isinstance(user, type):
-        return asdict(user)
-    if hasattr(user, 'get_user_details'):
-        details = user.get_user_details()
-        if isinstance(details, dict):
-            return details
-    raise TypeError(f'Unsupported user type: {type(user).__name__}')
-
-
 class ConnectionSuggestionService:
     """Fetches confirmed matches via services, not direct DB/Sheets helpers."""
 
@@ -204,8 +203,21 @@ class ConnectionSuggestionService:
         self._user_service = user_service
         self._ai_manager = ai_manager
 
+    @staticmethod
+    def _profile_dict(user) -> dict:
+        """Convert a User/Profile dataclass or dictionary into profile data."""
+        if isinstance(user, dict):
+            return user.copy()
+        if is_dataclass(user) and not isinstance(user, type):
+            return asdict(user)
+        if hasattr(user, 'get_user_details'):
+            details = user.get_user_details()
+            if isinstance(details, dict):
+                return details
+        raise TypeError(f'Unsupported user type: {type(user).__name__}')
+
     def prepare_connection(self, profile_a, profile_b) -> dict:
-        a, b = _profile_dict(profile_a), _profile_dict(profile_b)
+        a, b = self._profile_dict(profile_a), self._profile_dict(profile_b)
         result = self._ai_manager.generate_suggestions(a, b)
         result.update(
             user_a=str(a['student_id']), user_b=str(b['student_id']),
@@ -218,15 +230,18 @@ class ConnectionSuggestionService:
         user_id = str(user_id).strip()
         # The team's MatchService obtains confirmed reciprocal acceptances.
         # Candidate recommendations alone are not mutual connections.
-        if not callable(getattr(self._match_service, 'get_mutual_connections', None)):
-            raise RuntimeError(
-                'MatchService has no get_mutual_connections(user_id) method.'
-            )
-        match_result = self._match_service.get_mutual_connections(user_id)
-        if not match_result.success:
-            raise RuntimeError('Could not retrieve mutual connections')
-        if not isinstance(match_result.data, (list, tuple)):
-            raise RuntimeError('MatchService returned an unexpected connection format')
+        try:
+            if not callable(getattr(self._match_service, 'get_mutual_connections', None)):
+                raise RuntimeError('Mutual connection retrieval is unavailable')
+            match_result = self._match_service.get_mutual_connections(user_id)
+            if not match_result.success:
+                raise RuntimeError('Could not retrieve mutual connections')
+            if not isinstance(match_result.data, (list, tuple)):
+                raise RuntimeError('Unexpected connection format')
+        except Exception as error:
+            logger.warning('Unable to retrieve mutual connections: %s', type(error).__name__)
+            return [{'success': False, 'user_a': user_id,
+                     'error': 'Connections are temporarily unavailable.'}]
         ids = list(dict.fromkeys(str(value).strip() for value in match_result.data
                                  if value is not None and str(value).strip()))
         if not ids:
@@ -259,125 +274,27 @@ class ConnectionSuggestionService:
             output.append(result)
         return output
 
+    async def get_matches_for_user_async(self, user_id: str) -> list[dict]:
+        """Nonblocking adapter for callers in an async interface."""
+        return await asyncio.to_thread(self.get_matches_for_user, user_id)
 
-_ai_manager = None
-_connection_service = None
-_pool = None
-
-
-def _get_ai_manager():
-    global _ai_manager
-    if _ai_manager is None:
-        key = os.getenv('MATCHMAKING_API_KEY')
-        if not key:
-            raise RuntimeError('MATCHMAKING_API_KEY is not configured')
-        backup_key = os.getenv('RAPH_AI_KEY')
-        primary = GroqAIProvider(key)
-        backup = GroqAIProvider(backup_key) if backup_key and backup_key != key else None
-        _ai_manager = MatchmakingAIManager(primary, backup)
-    return _ai_manager
-
-
-def configure_services(match_service, user_service, ai_manager=None):
-    """Optional explicit wiring for integration/tests; avoids global DB imports."""
-    global _connection_service
-    _connection_service = ConnectionSuggestionService(
-        match_service, user_service, ai_manager or _get_ai_manager()
-    )
-    return _connection_service
-
-
-def _get_connection_service():
-    global _connection_service, _pool
-    if _connection_service is None:
-        # Lazy imports prevent database credentials from being required when
-        # merely generating AI suggestions or running unit tests.
-        from Data_Manager.database.connection import create_connection_pool
-        from repositories.user_repo import UserRepo
-        from repositories.matches_repo import MatchesRepo
-        from services.user_service import UserService
-        from services.match_service import MatchService
-        _pool = create_connection_pool()
-        _connection_service = ConnectionSuggestionService(
-            MatchService(MatchesRepo(_pool)),
-            UserService(UserRepo(_pool)),
-            _get_ai_manager(),
-        )
-    return _connection_service
-
-
-# Existing callers in main.py continue to work unchanged.
-def build_prompt(profile_a, profile_b):
-    return PromptBuilder().build_prompt(_profile_dict(profile_a), _profile_dict(profile_b))
-
-
-def parse_response(raw_text):
-    return ResponseValidator().parse_response(raw_text)
-
-
-def validate_response(data):
-    return ResponseValidator().validate_response(data)
-
-
-def generate_suggestions(profile_a, profile_b):
-    try:
-        return _get_ai_manager().generate_suggestions(
-            _profile_dict(profile_a), _profile_dict(profile_b)
-        )
-    except Exception as error:
-        logger.error('Unable to initialise AI: %s', type(error).__name__)
-        return {'success': False, 'error': 'AI service configuration unavailable'}
-
-
-async def generate_suggestions_async(profile_a, profile_b):
-    return await asyncio.to_thread(generate_suggestions, profile_a, profile_b)
-
-
-def prepare_connection(profile_a, profile_b):
-    # Does not require a database connection: used after mutual match in main.py.
-    a, b = _profile_dict(profile_a), _profile_dict(profile_b)
-    result = generate_suggestions(a, b)
-    result.update(
-        user_a=str(a['student_id']), user_b=str(b['student_id']),
-        user_a_info={field: a.get(field) for field in CONTACT_FIELDS},
-        user_b_info={field: b.get(field) for field in CONTACT_FIELDS},
-    )
-    return result
-
-
-def get_matches_for_user(user_id: str):
-    try:
-        return _get_connection_service().get_matches_for_user(user_id)
-    except Exception as error:
-        logger.warning('Unable to retrieve mutual connections: %s', type(error).__name__)
-        message = 'Connections are temporarily unavailable.'
-        return [{'success': False, 'user_a': str(user_id), 'error': message}]
-
-
-async def get_matches_for_user_async(user_id: str):
-    return await asyncio.to_thread(get_matches_for_user, user_id)
-
-
-def format_recommendations(result: dict, for_user='a'):
-    if not result.get('success'):
-        return ("Sorry, we couldn't load or generate suggestions for this connection right now.")
-    other = result['user_b_info'] if for_user == 'a' else result['user_a_info']
-    lines = [f"You matched with {other.get('name') or 'someone new'}!"]
-    telegram = other.get('tele_handle') or other.get('telegram_handle')
-    if telegram:
-        lines.append(f'Telegram: {telegram}')
-    if other.get('insta_handle'):
-        lines.append(f"Instagram: {other['insta_handle']}")
-    for title, key in (
-        ('Things you have in common', 'common_interests'),
-        ('Conversation starters', 'conversation_starters'),
-        ('Outing ideas', 'outing_ideas'),
-    ):
-        lines.extend(['', f'{title}:'])
-        lines.extend(f'- {item}' for item in result[key])
-    return '\n'.join(lines)
-
-
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    print('Import this module from the application or its tests.')
+    @staticmethod
+    def format_recommendations(result: dict, for_user: str = 'a') -> str:
+        """Format a connection result without exposing API or persistence logic."""
+        if not result.get('success'):
+            return "Sorry, we couldn't load or generate suggestions for this connection right now."
+        other = result['user_b_info'] if for_user == 'a' else result['user_a_info']
+        lines = [f"You matched with {other.get('name') or 'someone new'}!"]
+        telegram = other.get('tele_handle') or other.get('telegram_handle')
+        if telegram:
+            lines.append(f'Telegram: {telegram}')
+        if other.get('insta_handle'):
+            lines.append(f"Instagram: {other['insta_handle']}")
+        for title, key in (
+            ('Things you have in common', 'common_interests'),
+            ('Conversation starters', 'conversation_starters'),
+            ('Outing ideas', 'outing_ideas'),
+        ):
+            lines.extend(['', f'{title}:'])
+            lines.extend(f'- {item}' for item in result[key])
+        return '\n'.join(lines)

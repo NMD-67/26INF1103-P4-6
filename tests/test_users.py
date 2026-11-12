@@ -4,12 +4,21 @@ from services.user_service import UserService
 from repositories.user_repo import UserRepo
 from models.user import User
 from Data_Manager.database.connection import create_connection_pool
+from models.dealbreaker import DealBreaker
+from repositories.otp_repo import OTPRepo
 
-pool = create_connection_pool()  # Assuming you have a ConnectionPool class defined somewhere
+pool = (
+    create_connection_pool()
+)  # Assuming you have a ConnectionPool class defined somewhere
 user_repo = UserRepo(pool)
 user_service = UserService(user_repo)
 match_repo = MatchesRepo(pool)
 match_service = MatchService(match_repo)
+otp_repo = OTPRepo(pool)
+
+# Test OTP
+otp_repo.create_otp("1234567", "6767")
+otp_repo.get_otp("1234567")
 
 # Test create user acc
 test_user = User(student_id="1234567", name="TEST_ACC")
@@ -29,14 +38,32 @@ else:
 
 # Test update user hobbies
 update_hobbies_fields = {"hobbies": ["Reading", "Gaming", "Hiking"]}
-update_hobbies_result = user_service.update_user(test_user.student_id, update_hobbies_fields)
+update_hobbies_result = user_service.update_user(
+    test_user.student_id, update_hobbies_fields
+)
 if update_hobbies_result.success:
     print(f"User hobbies updated successfully")
 else:
     print(f"Failed to update user hobbies: {update_hobbies_result.error_msg}")
 
-# Test get user
-get_user_result = user_service.login_user(test_user.student_id)
+# Test update dealbreakers
+new_dealbreakers = DealBreaker(
+    min_age=6,
+    max_age=7,
+    religion=["Muslim", "Christian"],
+    race=["Malay", "Indian"],
+    gender="Male",
+)
+update_dealbreakers_result = user_service.update_user(
+    test_user.student_id, {"deal_breakers": new_dealbreakers}
+)
+if update_dealbreakers_result.success:
+    print(f"User dealbreakers updated success")
+else:
+    print(f"Failed to update user hobbies: {update_dealbreakers_result.error_msg}")
+
+# Test get user profile
+get_user_result = user_service.get_profile(test_user.student_id)
 if get_user_result.success:
     user = get_user_result.data
     user.print_user_details()  # Print user details for debugging
@@ -58,7 +85,12 @@ if update_user2_result.success:
 else:
     print(f"Failed to update second user: {update_user2_result.error_msg}")
 
-create_match_result = match_service.create_match(test_user.student_id, test_user2.student_id, 85, "Good compatibility based on shared interests")
+create_match_result = match_service.create_match(
+    test_user.student_id,
+    test_user2.student_id,
+    85,
+    "Good compatibility based on shared interests",
+)
 if create_match_result.success:
     print(f"Match created successfully")
 else:
@@ -70,7 +102,9 @@ if candidates_result.success:
     candidates = candidates_result.data
     print(f"Candidates for user {test_user.student_id}:")
     for candidate in candidates:
-        print(f"Candidate ID: {candidate.student_id}, Name: {candidate.name}, Compatibility Score: {candidate.compatibility_score}, Reason: {candidate.reason}")
+        print(
+            f"Candidate ID: {candidate.student_id}, Name: {candidate.name}, Compatibility Score: {candidate.compatibility_score}, Reason: {candidate.reason}"
+        )
         candidate.print_user_details()  # Print candidate details for debugging
 else:
     print(f"Failed to retrieve candidates: {candidates_result.error_msg}")

@@ -21,7 +21,7 @@ def main():
     from services.match_service import MatchService
     from models.dealbreaker import DealBreaker
     from config.user_fields import USER_FIELD_CONFIG, PROFILE_FIELDS
-    from IO_Manager import io_manager
+    from IO_Manager.console_io import ConsoleIO
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
     from AI_Manager.profile_matching_AI_copy import AIManager, GroqAIClient
     from AI_Manager import matchmaking_ai
@@ -35,9 +35,11 @@ def main():
         client = GroqAIClient()
         scoring = AIManager(client)
         matchmaking_ai.configure_services(matches, users)
+        logic = ProfileLogicManager(PROFILE_FIELDS)
+        console = ConsoleIO(PROFILE_FIELDS, logic)
         app = SITogetherApp(
-            users, otp, matches, scoring, matchmaking_ai, io_manager,
-            ProfileLogicManager(PROFILE_FIELDS), USER_FIELD_CONFIG,
+            users, otp, matches, scoring, matchmaking_ai, console,
+            logic, USER_FIELD_CONFIG,
             PROFILE_FIELDS, DealBreaker,
         )
         app.run()

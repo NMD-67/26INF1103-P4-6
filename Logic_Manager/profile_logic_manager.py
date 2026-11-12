@@ -3,6 +3,8 @@
 This class does not perform input/output or database operations.
 """
 
+from datetime import date, datetime
+
 
 class ProfileLogicManager:
     def __init__(self, profile_fields: list[dict] | None = None):
@@ -72,3 +74,13 @@ class ProfileLogicManager:
                 return "Minimum preferred age cannot exceed maximum preferred age."
 
         return None
+
+    def parse_birthday(self, text):
+        return datetime.strptime(text, "%d/%m/%Y").date()
+
+    def calculate_age(self, birthday, today=None):
+        today = date.today() if today is None else today
+        age = today.year - birthday.year
+        if (today.month, today.day) < (birthday.month, birthday.day):
+            age -= 1
+        return age

@@ -24,15 +24,14 @@ class SITogetherApp:
         self._student_id = None
 
     def login(self):
-        id_field = next(field for field in self._fields if field["key"] == "student_id")
-        student_id = self._io.ask_field(id_field)
+        student_id = self._io.ask_student_id()
         result = asyncio.run(self._otp.send_otp(student_id))
         if not result.success:
             self._io.show_error(result.error_msg)
             return False
         self._io.show("Check your school email for the OTP.")
         for attempt in range(3):
-            otp = input("Enter your OTP: ").strip()
+            otp = self._io.ask_otp()
             result = self._otp.verify_otp(student_id, otp, self._users)
             if result.success:
                 self._student_id = student_id
@@ -138,15 +137,9 @@ class SITogetherApp:
         fields = [field for field in self._fields if field["key"] != "student_id"]
         changed = False
         while True:
-            for number, field in enumerate(fields, 1):
-                self._io.show(f"{number}. {field['label']}")
-            choice = input("Choose a field to update (0 to finish): ").strip()
-            if choice == "0":
+            field = self._io.ask_edit_field(fields)
+            if field is None:
                 break
-            if not choice.isdecimal() or not 1 <= int(choice) <= len(fields):
-                self._io.show_error("Choose a valid field number.")
-                continue
-            field = fields[int(choice) - 1]
             if self._logic.should_skip_field(answers, field):
                 self._io.show("This field does not apply to your profile.")
                 continue
@@ -185,16 +178,8 @@ class SITogetherApp:
             self._io.show_error(result.error_msg)
             return
         for candidate in result.data:
-            self._io.show(f"\nCompatibility: {candidate.compatibility_score}%")
-            self._io.show(f"Reason: {candidate.reason or '-'}")
-            for key in ("name", "year", "course", "bio", "here_for", "hobbies"):
-                self._io.show(f"{self._io.profile_label(key)}: "
-                              f"{self._io.profile_value(key, getattr(candidate, key, None))}")
-            while True:
-                decision = input("Enter accept, reject, or 0 to return: ").strip().lower()
-                if decision in ("accept", "reject", "0"):
-                    break
-                self._io.show_error("Enter accept, reject, or 0.")
+            self._io.show_candidate(candidate)
+            decision = self._io.ask_match_decision()
             if decision == "0":
                 return
             saved = self._matches.handle_candidate_decision(
@@ -204,19 +189,14 @@ class SITogetherApp:
 
     def view_connections(self):
         connections = self._suggestions.get_matches_for_user(self._student_id)
-        if not connections:
-            self._io.show("No mutual connections yet.")
-        for connection in connections:
-            self._io.show(self._suggestions.format_recommendations(connection))
+        self._io.show_connections(connections)
 
     def run(self):
         self._io.show("Welcome to SITogether")
         if not self.login() or not self.complete_profile():
             return
         while True:
-            self._io.show("\n1. Find matches\n2. View connections\n3. My profile"
-                          "\n4. Update profile\n5. Delete account\n6. Quit")
-            choice = input("Choose an option: ").strip()
+            choice = self._io.ask_menu_choice()
             try:
                 if choice == "1":
                     self.view_matches()
@@ -235,8 +215,6 @@ class SITogetherApp:
                         self._io.show_error(result.error_msg)
                 elif choice == "6":
                     return
-                else:
-                    self._io.show_error("Choose an option from 1 to 6.")
             except Exception:
                 logger.exception("Menu operation failed")
                 self._io.show_error("Could not complete this option. Please try again.")

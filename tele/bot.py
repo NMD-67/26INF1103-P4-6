@@ -21,6 +21,7 @@ from telegram.error import TelegramError
 from IO_Manager import io_manager
 from tele import profile_setup
 import traceback
+from datetime import datetime
 
 from Data_Manager.database.connection import create_connection_pool
 from services.bot_service import BotRepo, BotService
@@ -53,6 +54,7 @@ for field in profile_setup.PROFILE_FIELDS:
     editable_field = field.copy()
     editable_field["label"] = io_manager.profile_label(field["key"])
     USER_PROFILE_HANDLERS[field["key"]] = editable_field
+print(f"handers: {USER_PROFILE_HANDLERS.keys()}")
 
 
 def get_tele_id(update: Update):
@@ -155,15 +157,15 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         new_row = []
         for index, (key, value) in enumerate(USER_PROFILE_HANDLERS.items()):
-            if len(new_row) < 2:
-                new_row.append(
-                    InlineKeyboardButton(
-                        f"Edit {value['label']}", callback_data=f"edit_{key}"
-                    )
+            if len(new_row) >= 2:
+                btn_list.append(new_row)
+                new_row = []
+            new_row.append(
+                InlineKeyboardButton(
+                    f"Edit {value['label']}", callback_data=f"edit_{key}"
                 )
-                continue
-            btn_list.append(new_row)
-            new_row = []
+            )
+            continue
 
         keyboard = InlineKeyboardMarkup(btn_list)
 
@@ -191,6 +193,7 @@ async def edit_profile_button_handler(
         return
 
     field = query.data
+    print(f"query data: {field}")
     if field[5:] not in USER_PROFILE_HANDLERS:
         context.user_data.pop("editing_field", None)
         await query.message.reply_text(
@@ -210,6 +213,7 @@ async def edit_profile_button_handler(
     context.user_data["editing_field"] = field
     context.user_data["editing_token"] = secrets.token_hex(4)
     definition = USER_PROFILE_HANDLERS[field[5:]]
+    print(f"definition: {definition}")
     lines = profile_setup.question_lines(definition)
     if profile_setup.uses_buttons(definition):
         token = context.user_data["editing_token"]
@@ -296,11 +300,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
     try:
         student_id = bot_repo.get_student_id(get_tele_id(update))
         # response = user_repo.update(student_id)
-        print(f"key: {key} \n {definition}")
         if definition.get("class") is not None:
-            user_service.update_user(
+            update_result = user_service.update_user(
                 student_id, {definition.get("class"): {definition.get("key"): raw}}
             )
+        else:
+            if definition.get("key") == "birthday":
+                new_value = datetime.strptime(new_value, "%d/%m/%Y").date()
+            update_result = user_service.update_user(
+                student_id=student_id, fields={definition.get("key"): new_value}
+            )
+        if update_result.success:
+            await send_msg(update, "Updated!")
+        else:
+            await send_msg(update, update_result.error_msg)
 
     except Exception as e:
         traceback.print_exc()
@@ -374,12 +387,50 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def user_accept_handler(update: Update, ContextType: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer
+    student_id = bot_repo.get_student_id(get_tele_id(update))
 
-    match_id = query.data.split("_", 1)[1]
+    candidate_id = query.data.split("_", 1)[1]
+    match_service.handle_candidate_decision(
+        student_id=student_id, candidate_id=candidate_id, accepted=True
+    )
 
     await query.edit_message_reply_markup(reply_markup=None)
-    await query.message.reply_text(f"Rejected")
+    await query.message.reply_text(f"Accepted!")
+
+
+async def user_reject_handler(update: Update, ContextType: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    student_id = bot_repo.get_student_id(get_tele_id(update))
+
+    candidate_id = query.data.split("_", 1)[1]
+    match_result = match_service.handle_candidate_decision(
+        student_id=student_id, candidate_id=candidate_id, accepted=False
+    )
+
+    if not match_result.success:
+        await query.message.reply_text(f"An error occurred: {match_result.error_msg}")
+    else:
+        await query.message.reply_text(f"Rejected! Use /find_match to view next user!")
+
+    await query.edit_message_reply_markup(reply_markup=None)
+
+
+async def view_matches_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    student_id = bot_repo.get_student_id(get_tele_id(update))
+
+    matches_response = match_service.get_all_matches(student_id)
+    if not matches_response.success:
+        await send_msg(update, "An error occurred when getting matches")
+        return
+    match_list = matches_response.data
+    if len(match_list) < 1:
+        await send_msg(update, "Wow, such empty...")
+        return
+    match_text = ""
+    match_data = match_list[0].get_user_details()
+    for field, value in match_data.items():
+        match_text += f"{field}: {value}"
+    await send_msg(update, match_text)
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -403,6 +454,7 @@ async def configure_command_menu(application):
             BotCommand("help", "Show instructions and commands"),
             BotCommand("start", "Show the welcome message"),
             BotCommand("find_match", "View reccomended profiles"),
+            BotCommand("view_matches", "View users that've matched with you!"),
         ]
     )
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
@@ -422,6 +474,7 @@ def run_bot():
     app.add_handler(CommandHandler("save", profile_setup.save))
     app.add_handler(CommandHandler("cancel", profile_setup.cancel))
     app.add_handler(CommandHandler("find_match", find_match_handler))
+    app.add_handler(CommandHandler("view_matches", view_matches_handler))
     app.add_handler(CallbackQueryHandler(profile_setup.menu_choice, pattern=r"^form:"))
     app.add_handler(CallbackQueryHandler(edit_option_handler, pattern=r"^editpick:"))
     app.add_handler(
@@ -430,6 +483,8 @@ def run_bot():
         )
     )
     app.add_handler(CallbackQueryHandler(user_accept_handler, pattern=r"^accept_"))
+    app.add_handler(CallbackQueryHandler(user_reject_handler, pattern=r"^reject_"))
+
     app.add_handler(CommandHandler("help", help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     io_manager.show("Starting the bot...")

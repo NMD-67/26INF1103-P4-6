@@ -23,7 +23,7 @@ class UserRepo:
         """Get a list of tables that store array data for users"""
         array_tables = []
         for key, value in USER_FIELD_CONFIG.items():
-            if value["type"] == list:
+            if value["type"] == list and value.get("class") is None:
                 array_tables.append(value["storage"])
         return array_tables
 
@@ -57,6 +57,7 @@ class UserRepo:
         "hobbies": list[str],
         "dealbreakers": DealBreakers
         }"""
+
         if not fields:
             return False
 
@@ -67,8 +68,6 @@ class UserRepo:
         class_fields = {
             field: value for field, value in fields.items() if field in CLASS_FIELDS
         }
-
-        print(f"Fields: {fields}, {fields.items()}, {class_fields}")
 
         assignments = ", ".join(
             f"{field} = %s"
@@ -129,31 +128,29 @@ class UserRepo:
                 )
             for field in class_fields:
                 # Check if the provided class matches config class
-                expected_type = CLASS_FIELDS[field]["type"]
-                provided_class = fields[field]
-                if not isinstance(provided_class, expected_type):
-                    raise TypeError(f"{field} must be a {expected_type.__name__} object.")
-                if isinstance(provided_class, expected_type):
-                    updated_data = provided_class.to_row()
-                    table_name = CLASS_FIELDS[field]["storage"]
-                    column_names = list(updated_data)
-                    columns = ", ".join(column for column in column_names)
-                    values = list(updated_data.values())
-                    placeholders = ", ".join(["%s"] * len(values))
-                    sets = ", ".join(
-                        f"{column} = EXCLUDED.{column}" for column in column_names
-                    )
-                    result = conn.execute(
-                        f"""
-                    INSERT INTO {table_name} (student_id, {columns}) VALUES (%s, {placeholders})
-                    ON CONFLICT (student_id) DO UPDATE SET {sets}
-                    RETURNING student_id
-                    """,
-                        (
-                            student_id,
-                            *values,
-                        ),
-                    )
+                updated_values = fields[field]
+                table_name = USER_FIELD_CONFIG[field]["storage"]
+                is_list = USER_FIELD_CONFIG[field]["type"] == list
+                column_names = list(updated_values)
+
+                columns = ", ".join(column for column in column_names)
+                values = list(updated_values.values())
+                print(f"column_names: {column_names}, {values}")
+                placeholders = ", ".join(["%s"] * len(values))
+                sets = ", ".join(
+                    f"{column} = EXCLUDED.{column}" for column in column_names
+                )
+                result = conn.execute(
+                    f"""
+                INSERT INTO {table_name} (student_id, {columns}) VALUES (%s, {placeholders})
+                ON CONFLICT (student_id) DO UPDATE SET {sets}
+                RETURNING student_id
+                """,
+                    (
+                        student_id,
+                        *values,
+                    ),
+                )
 
             return result is not None
 
@@ -172,8 +169,9 @@ class UserRepo:
                 return None
 
             array_tables = self._get_array_tables()
-
+            print(f"array tables: {array_tables}")
             for table in array_tables:
+                print(f"table: {table}")
                 column_name = USER_FIELD_CONFIG[
                     next(
                         key

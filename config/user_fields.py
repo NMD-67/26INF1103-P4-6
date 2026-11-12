@@ -118,7 +118,7 @@ USER_FIELD_CONFIG = {
     },
     "birthday": {
         "editable": True,
-        "storage": None,
+        "storage": "users",
         "type": str,
         "question": "When is your birthday?",
         "label": "Birthday",
@@ -241,7 +241,7 @@ USER_FIELD_CONFIG = {
     "race_preference": {
         "editable": True,
         "storage": None,
-        "type": str,
+        "type": list,
         "question": "Do you have a race you want to blacklist for your matches?",
         "label": "Race Blacklist",
         "section": SECTION_PERSONAL,
@@ -254,7 +254,7 @@ USER_FIELD_CONFIG = {
     "religion_preference": {
         "editable": True,
         "storage": None,
-        "type": str,
+        "type": list,
         "question": "Do you have a religion you want to blacklist?",
         "label": "Religion Blacklist",
         "section": SECTION_PERSONAL,
@@ -269,7 +269,7 @@ USER_FIELD_CONFIG = {
         "storage": None,
         "type": str,
         "question": "What is the youngest age you would like to match with?",
-        "label": "Minimum Preferred Age",
+        "label": "Minimum Age",
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "age",
@@ -282,7 +282,7 @@ USER_FIELD_CONFIG = {
         "storage": None,
         "type": str,
         "question": "What is the oldest age you would like to match with?",
-        "label": "Maximum Preferred Age",
+        "label": "Maximum Age",
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "age",
@@ -423,7 +423,9 @@ SCALAR_FIELDS = [
     if settings["type"] != list and settings["type"] != DealBreaker
 ]
 LIST_FIELDS = [
-    key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] == list
+    key
+    for key, settings in REPOSITORY_FIELD_CONFIG.items()
+    if settings["type"] == list and settings.get("class") is None
 ]
 
 CLASS_FIELDS = ["dealbreakers"]

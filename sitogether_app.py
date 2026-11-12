@@ -135,7 +135,16 @@ class SITogetherApp:
         self._io.show_profile(answers)
         if not self._io.confirm("Save this profile?"):
             return False
-        return self._save_profile(answers)
+        while True:
+            try:
+                if self._save_profile(answers):
+                    return True
+            except Exception:
+                logger.exception("Initial profile save failed")
+                self._io.show_error("Could not save your profile. Your answers are still available for retry.")
+            if not self._io.confirm("Try saving this profile again?"):
+                self._io.show("Leaving SITogether without completing profile setup.")
+                return False
 
     def view_profile(self):
         answers = self._form_values(self._load_profile())

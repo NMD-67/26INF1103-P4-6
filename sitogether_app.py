@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -80,19 +80,22 @@ class SITogetherApp:
         updates = {}
         for key, settings in self._config.items():
             form_key = settings.get("form_key", key)
-            if key == "student_id" or form_key in preference_keys:
+            if key == "student_id" or form_key == "birthday" or form_key in preference_keys:
                 continue
             if form_key not in answers:
                 continue
             value = answers[form_key]
-            if form_key == "birthday" and isinstance(value, str):
-                value = datetime.strptime(value, "%d/%m/%Y").date()
             if settings["storage"] is None:
                 if value not in (None, "", []):
                     raise ValueError(f"Storage for {form_key} is not configured yet.")
                 continue
             if settings.get("editable", False):
                 updates[key] = value
+
+        # Birthday is used only in memory; never pass it to the repository.
+        if answers.get("birthday"):
+            updates.update(self._logic.process_birthday(answers["birthday"]))
+
         gender = answers.get("match_preference")
         updates["dealbreakers"] = self._dealbreaker_class(
             min_age=answers.get("min_preferred_age") or None,
@@ -113,24 +116,37 @@ class SITogetherApp:
         self._io.show("Profile saved.")
         return True
 
+    def _questions_for_profile(self, answers):
+        # Existing users with both derived fields need not re-enter their birthday.
+        if answers.get("age") is not None and answers.get("horoscope"):
+            return [field for field in self._fields if field["key"] != "birthday"]
+        return self._fields
+
     def complete_profile(self):
         answers = self._form_values(self._load_profile())
-        missing = self._logic.find_missing_fields(answers, self._fields)
+        questions = self._questions_for_profile(answers)
+        missing = self._logic.find_missing_fields(answers, questions)
         if not missing:
             return True
         self._io.show("Please complete your profile.")
         preset = {key: value for key, value in answers.items()
                   if value not in (None, "", [])}
         preset["student_id"] = self._student_id
-        answers = self._io.collect_profile(self._fields, preset)
-        self._io.show_profile_summary(answers, self._fields)
+        answers = self._io.collect_profile(questions, preset)
+        self._io.show_profile_summary(
+            answers, [field for field in questions if field["key"] != "birthday"]
+        )
         if not self._io.confirm("Save this profile?"):
             return False
         return self._save_profile(answers)
 
     def view_profile(self):
         answers = self._form_values(self._load_profile())
-        self._io.show_profile_summary(answers, self._fields)
+        self._io.show_profile_summary(
+            answers, [field for field in self._fields if field["key"] != "birthday"]
+        )
+        self._io.show(f"Age: {answers.get('age', '-')}")
+        self._io.show(f"Horoscope: {answers.get('horoscope') or '-'}")
 
     def update_profile(self):
         answers = self._form_values(self._load_profile())
@@ -148,7 +164,9 @@ class SITogetherApp:
             for other in fields:
                 if self._logic.should_skip_field(answers, other):
                     self._logic.clear_field(answers, other)
-            missing = self._logic.find_missing_fields(answers, self._fields)
+            missing = self._logic.find_missing_fields(
+                answers, self._questions_for_profile(answers)
+            )
             if missing:
                 answers.update(self._io.collect_missing(missing))
         if changed and self._io.confirm("Save these changes?"):

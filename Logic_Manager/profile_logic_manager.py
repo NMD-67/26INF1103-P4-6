@@ -84,3 +84,32 @@ class ProfileLogicManager:
         if (today.month, today.day) < (birthday.month, birthday.day):
             age -= 1
         return age
+
+    def calculate_horoscope(self, birthday: date) -> str:
+        """Return the conventional Western sun sign without calling any AI API."""
+        month_day = (birthday.month, birthday.day)
+        signs = (
+            ((1, 20), (2, 18), "Aquarius"),
+            ((2, 19), (3, 20), "Pisces"),
+            ((3, 21), (4, 19), "Aries"),
+            ((4, 20), (5, 20), "Taurus"),
+            ((5, 21), (6, 20), "Gemini"),
+            ((6, 21), (7, 22), "Cancer"),
+            ((7, 23), (8, 22), "Leo"),
+            ((8, 23), (9, 22), "Virgo"),
+            ((9, 23), (10, 22), "Libra"),
+            ((10, 23), (11, 21), "Scorpio"),
+            ((11, 22), (12, 21), "Sagittarius"),
+        )
+        for start, end, sign in signs:
+            if start <= month_day <= end:
+                return sign
+        return "Capricorn"  # 22 Dec through 19 Jan
+
+    def process_birthday(self, text: str, today: date | None = None) -> dict:
+        """Calculate values locally; deliberately do not return full birthday."""
+        birthday = self.parse_birthday(text)
+        return {
+            "age": self.calculate_age(birthday, today=today),
+            "horoscope": self.calculate_horoscope(birthday),
+        }

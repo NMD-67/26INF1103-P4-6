@@ -29,3 +29,13 @@ def clear_field(profile, field):
 
 def validate_age_preferences(profile):
     return _profile_logic.validate_age_preferences(profile)
+
+
+def calculate_age(birthday, today=None):
+    return _profile_logic.calculate_age(birthday, today=today)
+
+def calculate_horoscope(birthday):
+    return _profile_logic.calculate_horoscope(birthday)
+
+def process_birthday(text, today=None):
+    return _profile_logic.process_birthday(text, today=today)

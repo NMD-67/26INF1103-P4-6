@@ -6,7 +6,8 @@ from models.dealbreaker import DealBreaker
 class User:
     student_id: str
     name: str = None
-    birthday: int = None
+    age: int = None
+    horoscope: str = None
     gender: str = None
     year: int = None
     course: str = None

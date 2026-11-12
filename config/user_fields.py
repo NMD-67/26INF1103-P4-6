@@ -117,7 +117,7 @@ USER_FIELD_CONFIG = {
     },
     "birthday": {
         "editable": True,
-        "storage": "users",
+        "storage": None,
         "type": str,
         "question": "When is your birthday?",
         "label": "Birthday",
@@ -125,6 +125,19 @@ USER_FIELD_CONFIG = {
         "required": True,
         "kind": "date",
         "hint": "DD/MM/YYYY",
+    },
+    # Derived from the birthday locally and saved; not asked as separate questions.
+    "age": {
+        "editable": True,
+        "storage": "users",
+        "type": int,
+        "derived": True,
+    },
+    "horoscope": {
+        "editable": True,
+        "storage": "users",
+        "type": str,
+        "derived": True,
     },
     "gender": {
         "editable": True,
@@ -365,6 +378,7 @@ USER_FIELD_CONFIG = {
 PROFILE_FIELDS = [
     {"key": settings.get("form_key", key), **settings}
     for key, settings in USER_FIELD_CONFIG.items()
+    if not settings.get("derived", False)
 ]
 
 # Do not make existing SQL queries request columns that have not been migrated yet.

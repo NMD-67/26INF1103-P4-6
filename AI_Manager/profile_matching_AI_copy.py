@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 import groq
 from groq import Groq
 
-from user import User  # adjust to wherever your User class lives
+from models import User
 
 logger = logging.getLogger(__name__)
 

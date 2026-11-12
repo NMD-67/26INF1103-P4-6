@@ -226,7 +226,7 @@ USER_FIELD_CONFIG = {
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "choice",
-        "options": ["No preference"] + RACES + ["Prefer not to say"],
+        "options": ["No preference"] + RACES,
     },
     "religion_preference": {
         "editable": True,
@@ -237,7 +237,7 @@ USER_FIELD_CONFIG = {
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "choice",
-        "options": ["No preference"] + RELIGIONS + ["Prefer not to say"],
+        "options": ["No preference"] + RELIGIONS,
     },
     "min_preferred_age": {
         "editable": True,

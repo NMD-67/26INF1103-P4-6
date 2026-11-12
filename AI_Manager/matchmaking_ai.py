@@ -58,7 +58,7 @@ Student B profile:
 
 Respond ONLY with a JSON object with exactly these three keys:
 {{"common_interests": ["..."], "conversation_starters": ["..."], "outing_ideas": ["..."]}}
-Each key must contain 1-{MAX_ITEMS_PER_LIST} concise, appropriate strings.
+Each key should contain 3-{MAX_ITEMS_PER_LIST} concise, appropriate strings.
 Base all suggestions only on provided data and do not invent facts. For common_interests,
 start with genuine overlaps; if none, identify related/complementary interests without
 claiming they're identical. Write conversation starters as natural direct questions.
@@ -113,10 +113,10 @@ class GroqAIProvider(AIProvider):
     """Concrete Groq integration. One instance is configured per API key."""
 
     def __init__(self, api_key: str, model: str = GROQ_MODEL, client=None):
-        if not api_key or not api_key.strip():
+        if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError('Groq API key is missing')
         self._model = model
-        self._client = client or Groq(
+        self._client = client if client is not None else Groq(
             api_key=api_key.strip(), timeout=API_TIMEOUT_SECONDS, max_retries=0
         )
 
@@ -183,7 +183,7 @@ class MatchmakingAIManager:
 def _profile_dict(user) -> dict:
     """Convert actual models.user.User (or legacy dictionaries) to a profile."""
     if isinstance(user, dict):
-        return user
+        return user.copy()
     # The latest models.User and models.Profile are dataclasses.
     # Prefer dataclass conversion because Profile.get_user_details()
     # currently returns only the base fields.
@@ -216,13 +216,11 @@ class ConnectionSuggestionService:
 
     def get_matches_for_user(self, user_id: str) -> list[dict]:
         user_id = str(user_id).strip()
-        # This service method is NOT implemented in the team's latest ZIP.
-        # Ask the MatchService owner to add it; never guess mutual matches
-        # from one-way candidate recommendations.
+        # The team's MatchService obtains confirmed reciprocal acceptances.
+        # Candidate recommendations alone are not mutual connections.
         if not callable(getattr(self._match_service, 'get_mutual_connections', None)):
             raise RuntimeError(
-                'MatchService does not yet provide get_mutual_connections(user_id). '
-                'Ask the matching teammate to implement it in their service and repository.'
+                'MatchService has no get_mutual_connections(user_id) method.'
             )
         match_result = self._match_service.get_mutual_connections(user_id)
         if not match_result.success:
@@ -230,22 +228,35 @@ class ConnectionSuggestionService:
         if not isinstance(match_result.data, (list, tuple)):
             raise RuntimeError('MatchService returned an unexpected connection format')
         ids = list(dict.fromkeys(str(value).strip() for value in match_result.data
-                                 if str(value).strip()))
+                                 if value is not None and str(value).strip()))
         if not ids:
             return []
-        first = self._user_service.get_user(user_id)
-        if not first.success:
-            raise RuntimeError('Could not load your profile')
+        # Load the requesting student once. A failure should be reported for
+        # each connection without preventing unrelated matches being listed.
+        try:
+            first = self._user_service.get_user(user_id)
+        except Exception as error:
+            logger.warning('Unable to load requesting user: %s', type(error).__name__)
+            first = None
         output = []
         for other_id in ids:
             if other_id == user_id:
                 continue
-            second = self._user_service.get_user(other_id)
-            if not second.success:
+            if first is None or not first.success or first.data is None:
                 output.append({'success': False, 'user_a': user_id,
-                               'user_b': other_id, 'error': 'Match profile unavailable'})
+                               'user_b': other_id, 'error': 'Your profile is unavailable'})
                 continue
-            output.append(self.prepare_connection(first.data, second.data))
+            try:
+                second = self._user_service.get_user(other_id)
+                if not second.success or second.data is None:
+                    raise ValueError('Profile unavailable')
+                result = self.prepare_connection(first.data, second.data)
+            except Exception as error:
+                logger.warning('Unable to prepare connection %s: %s',
+                               other_id, type(error).__name__)
+                result = {'success': False, 'user_a': user_id,
+                          'user_b': other_id, 'error': 'Match profile unavailable'}
+            output.append(result)
         return output
 
 
@@ -260,7 +271,7 @@ def _get_ai_manager():
         key = os.getenv('MATCHMAKING_API_KEY')
         if not key:
             raise RuntimeError('MATCHMAKING_API_KEY is not configured')
-        backup_key = os.getenv('MATCHMAKING_BACKUP_API_KEY')
+        backup_key = os.getenv('RAPH_AI_KEY')
         primary = GroqAIProvider(key)
         backup = GroqAIProvider(backup_key) if backup_key and backup_key != key else None
         _ai_manager = MatchmakingAIManager(primary, backup)
@@ -339,11 +350,7 @@ def get_matches_for_user(user_id: str):
         return _get_connection_service().get_matches_for_user(user_id)
     except Exception as error:
         logger.warning('Unable to retrieve mutual connections: %s', type(error).__name__)
-        message = (
-            'MatchService needs get_mutual_connections(user_id) from your teammate.'
-            if 'get_mutual_connections' in str(error) else
-            'Connections are temporarily unavailable.'
-        )
+        message = 'Connections are temporarily unavailable.'
         return [{'success': False, 'user_a': str(user_id), 'error': message}]
 
 
@@ -353,7 +360,7 @@ async def get_matches_for_user_async(user_id: str):
 
 def format_recommendations(result: dict, for_user='a'):
     if not result.get('success'):
-        return ("Sorry, we couldn't load or generate suggestions for your connections right now.")
+        return ("Sorry, we couldn't load or generate suggestions for this connection right now.")
     other = result['user_b_info'] if for_user == 'a' else result['user_a_info']
     lines = [f"You matched with {other.get('name') or 'someone new'}!"]
     telegram = other.get('tele_handle') or other.get('telegram_handle')

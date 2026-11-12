@@ -227,51 +227,69 @@ class ConnectionSuggestionService:
         return result
 
     def get_matches_for_user(self, user_id: str) -> list[dict]:
+        """Generate suggestions for mutual Match objects and populate recco_list.
+
+        Continue returning dictionaries for the existing ConsoleIO display.
+        """
         user_id = str(user_id).strip()
-        # The team's MatchService obtains confirmed reciprocal acceptances.
-        # Candidate recommendations alone are not mutual connections.
+
         try:
-            if not callable(getattr(self._match_service, 'get_mutual_connections', None)):
-                raise RuntimeError('Mutual connection retrieval is unavailable')
-            match_result = self._match_service.get_mutual_connections(user_id)
+            match_result = self._match_service.get_all_matches(user_id)
             if not match_result.success:
-                raise RuntimeError('Could not retrieve mutual connections')
-            if not isinstance(match_result.data, (list, tuple)):
-                raise RuntimeError('Unexpected connection format')
+                raise RuntimeError('Could not retrieve mutual matches')
+            matches = match_result.data
+            if not isinstance(matches, (list, tuple)):
+                raise TypeError('Unexpected matches format')
         except Exception as error:
-            logger.warning('Unable to retrieve mutual connections: %s', type(error).__name__)
+            logger.warning('Unable to retrieve mutual matches: %s', type(error).__name__)
             return [{'success': False, 'user_a': user_id,
                      'error': 'Connections are temporarily unavailable.'}]
-        ids = list(dict.fromkeys(str(value).strip() for value in match_result.data
-                                 if value is not None and str(value).strip()))
-        if not ids:
+
+        if not matches:
             return []
-        # Load the requesting student once. A failure should be reported for
-        # each connection without preventing unrelated matches being listed.
+
         try:
-            first = self._user_service.get_user(user_id)
+            viewer_result = self._user_service.get_user(user_id)
         except Exception as error:
-            logger.warning('Unable to load requesting user: %s', type(error).__name__)
-            first = None
+            logger.warning('Unable to load viewing user: %s', type(error).__name__)
+            viewer_result = None
+
         output = []
-        for other_id in ids:
-            if other_id == user_id:
+        seen_ids = set()
+        for match in matches:
+            other_id = str(match.student_id).strip()
+            if not other_id or other_id == user_id or other_id in seen_ids:
                 continue
-            if first is None or not first.success or first.data is None:
+            seen_ids.add(other_id)
+
+            if viewer_result is None or not viewer_result.success or viewer_result.data is None:
                 output.append({'success': False, 'user_a': user_id,
                                'user_b': other_id, 'error': 'Your profile is unavailable'})
                 continue
+
             try:
-                second = self._user_service.get_user(other_id)
-                if not second.success or second.data is None:
-                    raise ValueError('Profile unavailable')
-                result = self.prepare_connection(first.data, second.data)
+                # The Match model owns recco_list and delegates AI generation.
+                # This calls Groq once for this mutual connection.
+                viewing_user = viewer_result.data
+                result = match.generate_reccos(viewing_user, self._ai_manager)
+
+                # Preserve the dictionary format expected by ConsoleIO.
+                a = self._profile_dict(viewing_user)
+                b = self._profile_dict(match)
+                result.update(
+                    user_a=str(a['student_id']),
+                    user_b=str(b['student_id']),
+                    user_a_info={field: a.get(field) for field in CONTACT_FIELDS},
+                    user_b_info={field: b.get(field) for field in CONTACT_FIELDS},
+                )
             except Exception as error:
                 logger.warning('Unable to prepare connection %s: %s',
                                other_id, type(error).__name__)
+                match.recco_list = []
                 result = {'success': False, 'user_a': user_id,
-                          'user_b': other_id, 'error': 'Match profile unavailable'}
+                          'user_b': other_id, 'error': 'Match suggestions unavailable'}
             output.append(result)
+
         return output
 
     async def get_matches_for_user_async(self, user_id: str) -> list[dict]:

@@ -42,11 +42,12 @@ class MatchService:
             return Success("Status Updated")
         return Error("Failed to update status")
 
-    def get_next_candidate(self, student_id: str):
+    def get_next_candidate(self, student_id: str) -> Result:
         candidates = self.match_repo.get_candidates_for_user(student_id, True)
-        if candidates:
+        if len(candidates) > 0:
             return Success(data=candidates)
         else:
+            # Populate candidate list
             return Error(error_msg=f"No candidates found for user with ID {student_id}")
 
     def get_all_matches(self, student_id: str) -> Result:

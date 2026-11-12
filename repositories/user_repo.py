@@ -55,7 +55,7 @@ class UserRepo:
         #Attributes to update eg.
         "name": str,
         "hobbies": list[str],
-        "deal_breakers": DealBreakers
+        "dealbreakers": DealBreakers
         }"""
         if not fields:
             return False
@@ -67,6 +67,8 @@ class UserRepo:
         class_fields = {
             field: value for field, value in fields.items() if field in CLASS_FIELDS
         }
+
+        print(f"Fields: {fields}, {fields.items()}, {class_fields}")
 
         assignments = ", ".join(
             f"{field} = %s"
@@ -197,7 +199,6 @@ class UserRepo:
 
     def get_profile(self, student_id: str) -> Profile | None:
         user = self.get_user(student_id)
-
         if user is not None:
             with self.pool.connection() as conn:
                 row = conn.execute(

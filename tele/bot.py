@@ -20,15 +20,17 @@ import asyncio
 import secrets
 from telegram.error import TelegramError
 from IO_Manager import io_manager
-from Data_Manager.database import db
 from tele import profile_setup
+import traceback
 
 from Data_Manager.database.connection import create_connection_pool
 from services.bot_service import BotRepo, BotService
 from services.otp_service import OTPRepo, OTPService
-from services.user_service import UserRepo, UserService
+from services.user_service import UserRepo, UserService, User
+from services.match_service import MatchesRepo, MatchService
+from models.candidate import Candidate
+from config.user_fields import USER_FIELD_CONFIG
 
-from src.auth import get_user_info
 from Logic_Manager.Matching.matching_logic import get_next_user
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -41,6 +43,8 @@ otp_repo = OTPRepo(pool)
 otp_service = OTPService(otp_repo)
 bot_repo = BotRepo(pool)
 bot_service = BotService(bot_repo)
+match_repo = MatchesRepo(pool)
+match_service = MatchService(match_repo)
 
 # Build the editable fields from the same questions used during setup.
 USER_PROFILE_HANDLERS = {}
@@ -121,26 +125,27 @@ async def otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tele_id = get_tele_id(update)
-    user = bot_repo.get_student_id(tele_id)
+    student_id = bot_repo.get_student_id(tele_id)
 
-    if user is None:
+    if student_id is None:
         await send_msg(update, "You are not logged in! Log in using the /login command")
         return
 
     try:
-        student_id = user["student_id"]
         if student_id is None:
             await send_msg(update, "Student ID not found!")
             return
         # print("Getting user info")
-        user_result = get_user_info(student_id)
-        if user_result is None or user_result.get("status") == 404:
+        user_result = user_repo.get_profile(student_id)
+        if user_result is None:
             await send_msg(update, "Error! User details not found")
             return
-        user_details = user_result["user"]
+        user_details = user_result.get_user_details()
         reply = "User Details:\n"
+        print(type(user_result))
         for key, value in user_details.items():
-            reply += f"{io_manager.profile_label(key)}: {io_manager.profile_value(key, value)}\n"
+            if USER_FIELD_CONFIG.get(key) is not None:
+                reply += f"{USER_FIELD_CONFIG[key]["label"]}: {io_manager.profile_value(key, value)}\n"
 
         btn_list = [
             [
@@ -166,7 +171,8 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(reply, reply_markup=keyboard)
     except Exception as e:
-        # print(f"Error with /profile: {e}")
+        print(f"Error with /profile: {e}")
+        traceback.print_exc()
         await send_msg(update, "An Error occurred, contact nmd_002")
 
 
@@ -290,28 +296,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw=N
         )
         return
     try:
-        user = await asyncio.to_thread(bot_repo.get_student_id, get_tele_id(update))
-        if not user:
-            context.user_data.pop("editing_field", None)
-            await send_msg(update, "Please /login before editing your profile.")
-            return
-        response = await asyncio.to_thread(
-            db.save_profile,
-            {"student_id": str(user["student_id"]), key: new_value},
-            partial=True,
-        )
-    except Exception:
+        student_id = bot_repo.get_student_id(get_tele_id(update))
+        # response = user_repo.update(student_id)
+        print(f"key: {key} \n {definition}")
+        if definition.get("class") is not None:
+            user_service.update_user(
+                student_id, {definition.get("class"): {definition.get("key"): raw}}
+            )
+
+    except Exception as e:
+        traceback.print_exc()
         await send_msg(
             update, "Could not update your profile. Please try again, or /cancel."
         )
         return
-    if response["saved"]:
-        context.user_data.pop("editing_field", None)
-        context.user_data.pop("editing_token", None)
-        await send_msg(update, "Profile updated. Use /profile to view it.")
-    else:
-        message = response["message"]
-        await send_msg(update, message + " Please retry your answer, or /cancel.")
+    # if response["saved"]:
+    #     context.user_data.pop("editing_field", None)
+    #     context.user_data.pop("editing_token", None)
+    #     await send_msg(update, "Profile updated. Use /profile to view it.")
+    # else:
+    #     message = response["message"]
+    #     await send_msg(update, message + " Please retry your answer, or /cancel.")
     return
 
 
@@ -331,35 +336,34 @@ async def find_match_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # Get next user
     # If empty, say ran out of ppl
-    get_next_user_result = get_next_user(student_id)
-    if not get_next_user_result["success"]:
-        return await loading_message.edit_text(
-            f"An error occured: {get_next_user_result["error"]}"
+    next_candidate_result = match_service.get_next_candidate(student_id)
+    if not next_candidate_result.success:
+        await loading_message.edit_text(
+            f"An Error Occured when getting next candidate {next_candidate_result.error_msg}"
         )
+        return
+    next_candidate = next_candidate_result.data[0]
+    if not isinstance(next_candidate, Candidate):
+        await loading_message.edit_text(f"Error: Candidate not found!")
+        return
 
-    next_user_response = get_next_user(student_id)
-    if not next_user_response["success"]:
-        return await loading_message.edit_text("Error in finding next student")
-    next_student_id = next_user_response["student_id"]
-
-    get_user_info_response = get_user_info(next_student_id)
-    if not get_user_info_response["success"]:
-        return await loading_message.edit_text(
-            "An error occured when getting data on student"
-        )
-
-    user = get_user_info_response["user"]
     user_profile = ""
     for field in ["name", "year", "course", "bio", "here_for", "hobbies"]:
-        if user[field]:
-            user_profile += f"{io_manager.profile_label(field)}: {user[field]}\n"
+        if getattr(next_candidate, field, None):
+            user_profile += (
+                f"{io_manager.profile_label(field)}: {next_candidate.field}\n"
+            )
 
     # TODO: Handle accept/reject
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("👍", callback_data=f"accept_{next_student_id}"),
-                InlineKeyboardButton("👎", callback_data=f"reject_{next_student_id}"),
+                InlineKeyboardButton(
+                    "👍", callback_data=f"accept_{next_candidate.student_id}"
+                ),
+                InlineKeyboardButton(
+                    "👎", callback_data=f"reject_{next_candidate.student_id}"
+                ),
             ],
         ]
     )

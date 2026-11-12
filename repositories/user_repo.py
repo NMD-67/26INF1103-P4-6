@@ -138,7 +138,6 @@ class UserRepo:
                     columns = ", ".join(column for column in column_names)
                     values = list(updated_data.values())
                     placeholders = ", ".join(["%s"] * len(values))
-                    print(f"Placeholders: {placeholders}, values: {values}")
                     sets = ", ".join(
                         f"{column} = EXCLUDED.{column}" for column in column_names
                     )
@@ -153,7 +152,6 @@ class UserRepo:
                             *values,
                         ),
                     )
-                    print(f"Insert into {table_name}: {result}")
 
             return result is not None
 
@@ -221,7 +219,6 @@ class UserRepo:
                     field: value for field, value in user.get_user_details().items()
                 }
 
-                print(f"Row: {row}")
                 return Profile(**base_user, dealbreakers=filtered_row)
 
     def delete(self, student_id: str) -> bool:

@@ -113,7 +113,6 @@ class SITogetherApp:
         if not result.success:
             self._io.show_error(result.error_msg)
             return False
-        self._io.show("Profile saved.")
         return True
 
     def _questions_for_profile(self, answers):
@@ -133,20 +132,14 @@ class SITogetherApp:
                   if value not in (None, "", [])}
         preset["student_id"] = self._student_id
         answers = self._io.collect_profile(questions, preset)
-        self._io.show_profile_summary(
-            answers, [field for field in questions if field["key"] != "birthday"]
-        )
+        self._io.show_profile(answers)
         if not self._io.confirm("Save this profile?"):
             return False
         return self._save_profile(answers)
 
     def view_profile(self):
         answers = self._form_values(self._load_profile())
-        self._io.show_profile_summary(
-            answers, [field for field in self._fields if field["key"] != "birthday"]
-        )
-        self._io.show(f"Age: {answers.get('age', '-')}")
-        self._io.show(f"Horoscope: {answers.get('horoscope') or '-'}")
+        self._io.show_profile(answers)
 
     def update_profile(self):
         answers = self._form_values(self._load_profile())
@@ -232,6 +225,7 @@ class SITogetherApp:
                             return
                         self._io.show_error(result.error_msg)
                 elif choice == "6":
+                    self._io.show("Goodbye! Thanks for using SITogether.")
                     return
             except Exception:
                 logger.exception("Menu operation failed")

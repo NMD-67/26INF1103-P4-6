@@ -128,12 +128,16 @@ USER_FIELD_CONFIG = {
     },
     # Derived from the birthday locally and saved; not asked as separate questions.
     "age": {
+        "label": "Age",
+        "section": SECTION_BACKGROUND,
         "editable": True,
         "storage": "users",
         "type": int,
         "derived": True,
     },
     "horoscope": {
+        "label": "Horoscope",
+        "section": SECTION_BACKGROUND,
         "editable": True,
         "storage": "users",
         "type": str,
@@ -379,6 +383,13 @@ PROFILE_FIELDS = [
     {"key": settings.get("form_key", key), **settings}
     for key, settings in USER_FIELD_CONFIG.items()
     if not settings.get("derived", False)
+]
+
+# Display derived values in the profile without adding input questions.
+PROFILE_DISPLAY_FIELDS = [
+    {"key": settings.get("form_key", key), **settings}
+    for key, settings in USER_FIELD_CONFIG.items()
+    if key != "birthday"
 ]
 
 # Do not make existing SQL queries request columns that have not been migrated yet.

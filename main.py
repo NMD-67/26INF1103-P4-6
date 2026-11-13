@@ -23,7 +23,8 @@ def main():
     from config.user_fields import USER_FIELD_CONFIG, PROFILE_FIELDS
     from IO_Manager.console_io import ConsoleIO
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
-    from AI_Manager.profile_matching_AI_copy import AIManager, GroqAIClient
+    from AI_Manager.Profile_Matching.scoring import get_groq_client
+    from AI_Manager.Profile_Matching.ai_manager import AIManager
     from AI_Manager.matchmaking_ai import (
         MatchmakingAIManager,
         ConnectionSuggestionService,
@@ -35,7 +36,7 @@ def main():
         users = UserService(UserRepo(pool))
         matches = MatchService(MatchesRepo(pool))
         otp = OTPService(OTPRepo(pool))
-        client = GroqAIClient()
+        client = get_groq_client()
         scoring = AIManager(client)
         ai_manager = MatchmakingAIManager.from_environment()
         matchmaking_ai = ConnectionSuggestionService(matches, users, ai_manager)

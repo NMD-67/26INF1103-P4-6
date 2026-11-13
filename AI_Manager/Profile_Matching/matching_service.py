@@ -17,8 +17,7 @@ USERS_TABLE = "users"
 def get_supabase():
     url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_API_KEY")
     if not url or not key:
-        raise RuntimeError("Set SUPABASE_URL and SUPABASE_KEY in .env")
-    return create_client(url, key)
+        raise RuntimeError("Set SUPABASE_URL and SUPABASE_API_KEY in .env")
 
 
 def fetch_user(supabase, student_id) -> User | None:
@@ -80,14 +79,50 @@ def save_recco_list(supabase, student_id, recco_list: dict):
     supabase.table(USERS_TABLE).update({"recco_student_id": merged}) \
         .eq("student_id", str(student_id)).execute()
 
+# Adjust these two imports to wherever your service and Result classes live
+from results.success import Success
+from services.match_service import MatchService
+from results.error import Error
+
+def save_matches(match_service, student_id, scores: dict, reasons: dict | None = None) -> dict:
+    """Saves {candidate_id: score} through create_match. Never raises."""
+    counts = {"saved": 0, "not_saved": 0, "failed": 0}
+
+    for candidate_id, score in scores.items():
+        reason = reasons.get(candidate_id) if reasons else None
+        try:
+            result = match_service.create_match(
+                str(student_id), str(candidate_id), float(score), reason
+            )
+        except Exception:
+            logger.exception("create_match crashed for %s -> %s", student_id, candidate_id)
+            counts["failed"] += 1
+            continue
+
+        if isinstance(result, Success):
+            counts["saved"] += 1
+        else:
+            # create_match returns Error("Match already exists") when it returns False
+            logger.info("Not saved %s -> %s: %s", student_id, candidate_id,
+                        getattr(result, "error_msg", result))
+            counts["not_saved"] += 1
+
+    return counts
+
+from Data_Manager.database.connection import create_connection_pool   # adjust to the real path
+from repositories.matches_repo import MatchesRepo
+from services.match_service import MatchService
 
 if __name__ == "__main__":
     supabase = get_supabase()
     client = get_groq_client()
+    pool = create_connection_pool()
     try:
         match = generate_recommendations(supabase, client, "2605770", limit=5)
         if match:
             print(match.recco_list)
-            # save_recco_list(supabase, match.student_id, match.recco_list)  # enable once the output looks right
+            match_service = MatchService(MatchesRepo(pool))
+            print(save_matches(match_service, match.student_id, match.recco_list))
     finally:
         client.close()
+        pool.close()

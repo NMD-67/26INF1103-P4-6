@@ -16,8 +16,8 @@ class OTPRepo:
             )
             result = conn.execute(
                 """
-        INSERT INTO otp (student_id, otp)
-        VALUES (%s, %s)
+        INSERT INTO otp (student_id, otp, created_at)
+        VALUES (%s, %s, CURRENT_TIMESTAMP)
         RETURNING student_id
         """,
                 (student_id, otp),
@@ -32,7 +32,9 @@ class OTPRepo:
                 SELECT otp 
                 FROM otp
                 WHERE student_id = %s
+                  AND created_at > CURRENT_TIMESTAMP - INTERVAL '10 minutes'
                 ORDER BY created_at DESC
+                LIMIT 1
                 """,
                 (student_id,),
             ).fetchone()
@@ -44,14 +46,14 @@ class OTPRepo:
 
             return otp
 
-    def delete_otp(self, student_id: str) -> bool:
+    def delete_otp(self, student_id: str, expected_otp: int | None = None) -> bool:
+        """Delete an OTP; when verifying, consume only the matching unexpired code."""
+        query = "DELETE FROM otp WHERE student_id = %s"
+        values = [student_id]
+        if expected_otp is not None:
+            query += " AND otp = %s AND created_at > CURRENT_TIMESTAMP - INTERVAL '10 minutes'"
+            values.append(expected_otp)
+        query += " RETURNING student_id"
         with self.pool.connection() as conn:
-            result = conn.execute(
-                """
-                DELETE FROM otp
-                WHERE student_id=%s
-                returning student_id
-                """,
-                (student_id,),
-            )
+            result = conn.execute(query, values).fetchone()
             return result is not None

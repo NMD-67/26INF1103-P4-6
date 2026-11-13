@@ -42,12 +42,24 @@ class MatchService:
             return Success("Status Updated")
         return Error("Failed to update status")
 
-    def get_next_candidate(self, student_id: str):
-        candidates = self.match_repo.get_candidates_for_user(student_id, True)
-        if candidates:
-            return Success(data=candidates)
+    def get_next_candidate(self, student_id: str) -> Result:
+        candidate = self.match_repo.get_candidates_for_user(student_id, True)
+        if len(candidate) > 0:
+            return Success(data=candidate[0])
         else:
-            return Error(error_msg=f"No candidates found for user with ID {student_id}")
+            # TODO: Populate candidate list (Waiting on VALERIE)
+            return Error(error_msg=f"You've run out of people :(")
 
     def get_all_matches(self, student_id: str) -> Result:
-        pass
+        """Return profiles where both students accepted each other."""
+        matches = self.match_repo.get_matches_for_user(student_id)
+        if matches is None:
+            return Error("Could not retrieve mutual connections")
+        return Success(data=matches)
+
+    def get_mutual_connections(self, student_id: str) -> Result:
+        """Return mutual connection IDs for the suggestion service."""
+        result = self.get_all_matches(student_id)
+        if not result.success:
+            return result
+        return Success(data=[str(match.student_id) for match in result.data])

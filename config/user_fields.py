@@ -91,6 +91,7 @@ MBTI_TYPES = [
 # Dictionary order controls the order of questions.
 # form_key preserves existing form/Sheets names where PostgreSQL uses another name.
 from models.dealbreaker import DealBreaker
+from models.profile import Profile
 from dataclasses import is_dataclass
 
 USER_FIELD_CONFIG = {
@@ -125,6 +126,25 @@ USER_FIELD_CONFIG = {
         "required": True,
         "kind": "date",
         "hint": "DD/MM/YYYY",
+    },
+    # Derived from the birthday locally and saved; not asked as separate questions.
+    "age": {
+        "label": "Age",
+        "section": SECTION_BACKGROUND,
+        "editable": True,
+        "storage": "users",
+        "type": int,
+        "derived": True,
+        "label": "Age",
+    },
+    "horoscope": {
+        "label": "Horoscope",
+        "section": SECTION_BACKGROUND,
+        "editable": True,
+        "storage": "users",
+        "type": str,
+        "derived": True,
+        "label": "Horoscope",
     },
     "gender": {
         "editable": True,
@@ -174,7 +194,7 @@ USER_FIELD_CONFIG = {
     },
     "race": {
         "editable": True,
-        "storage": None,
+        "storage": "users",
         "type": str,
         "question": "What is your race?",
         "label": "Race",
@@ -216,50 +236,59 @@ USER_FIELD_CONFIG = {
         "required": True,
         "kind": "choice",
         "options": ["Male", "Female", "Both"],
+        "class": "dealbreakers",
     },
     "race_preference": {
         "editable": True,
         "storage": None,
-        "type": str,
-        "question": "Do you have a race preference for your matches?",
-        "label": "Race Preference",
+        "type": list,
+        "question": "Do you have a race you want to blacklist for your matches?",
+        "label": "Race Blacklist",
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "choice",
         "options": ["No preference"] + RACES + ["Prefer not to say"],
+        "class": "dealbreakers",
+        "key": "race",
     },
     "religion_preference": {
         "editable": True,
         "storage": None,
-        "type": str,
-        "question": "Do you have a religion preference for your matches?",
-        "label": "Religion Preference",
+        "type": list,
+        "question": "Do you have a religion you want to blacklist?",
+        "label": "Religion Blacklist",
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "choice",
-        "options": ["No preference"] + RELIGIONS + ["Prefer not to say"],
+        "options": ["No preference"] + RELIGIONS,
+        "class": "dealbreakers",
+        "key": "religion",
     },
-    "min_preferred_age": {
+    "min_age": {
         "editable": True,
         "storage": None,
         "type": str,
         "question": "What is the youngest age you would like to match with?",
-        "label": "Minimum Preferred Age",
+        "label": "Minimum Age",
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "age",
         "hint": "18-30; Enter for no minimum preference",
+        "class": "dealbreakers",
+        "key": "min_age",
     },
-    "max_preferred_age": {
+    "max_age": {
         "editable": True,
         "storage": None,
         "type": str,
         "question": "What is the oldest age you would like to match with?",
-        "label": "Maximum Preferred Age",
+        "label": "Maximum Age",
         "section": SECTION_PERSONAL,
         "required": False,
         "kind": "age",
         "hint": "18-30; Enter for no maximum preference",
+        "class": "dealbreakers",
+        "key": "max_age",
     },
     "here_for": {
         "editable": True,
@@ -300,7 +329,7 @@ USER_FIELD_CONFIG = {
     },
     "insta_handle": {
         "editable": True,
-        "storage": None,
+        "storage": "users",
         "type": str,
         "question": "What is your Instagram handle?",
         "label": "Instagram Handle",
@@ -318,7 +347,7 @@ USER_FIELD_CONFIG = {
         "label": "CCAs",
         "section": SECTION_EXTRA,
         "required": False,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated",
     },
     "events": {
@@ -330,7 +359,7 @@ USER_FIELD_CONFIG = {
         "label": "SIT Events",
         "section": SECTION_EXTRA,
         "required": False,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated",
     },
     "hobbies": {
@@ -342,21 +371,28 @@ USER_FIELD_CONFIG = {
         "label": "Hobbies",
         "section": SECTION_EXTRA,
         "required": True,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated, at least one",
     },
-    "interests": {
+    "interest_groups": {
         "editable": True,
         "storage": "interests",
         "type": list,
         "column_name": "interest",
         "form_key": "interest_groups",
+        "model_key": "interest_groups",
         "question": "Which interest groups do you belong to outside SIT?",
         "label": "Outside Interest Groups",
         "section": SECTION_EXTRA,
         "required": False,
-        "kind": list,
+        "kind": "list",
         "hint": "comma-separated",
+    },
+    "dealbreakers": {
+        "storage": "dealbreakers",
+        "label": "Deal Breakers",
+        "type": DealBreaker,
+        "exclusive_to": Profile,
     },
 }
 
@@ -364,6 +400,14 @@ USER_FIELD_CONFIG = {
 PROFILE_FIELDS = [
     {"key": settings.get("form_key", key), **settings}
     for key, settings in USER_FIELD_CONFIG.items()
+    if not settings.get("derived", False)
+]
+
+# Display derived values in the profile without adding input questions.
+PROFILE_DISPLAY_FIELDS = [
+    {"key": settings.get("form_key", key), **settings}
+    for key, settings in USER_FIELD_CONFIG.items()
+    if key != "birthday"
 ]
 
 # Do not make existing SQL queries request columns that have not been migrated yet.
@@ -374,19 +418,16 @@ REPOSITORY_FIELD_CONFIG = {
 }
 
 SCALAR_FIELDS = [
-    key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] != list
+    key
+    for key, settings in REPOSITORY_FIELD_CONFIG.items()
+    if settings["type"] != list and settings["type"] != DealBreaker
 ]
 LIST_FIELDS = [
-    key for key, settings in REPOSITORY_FIELD_CONFIG.items() if settings["type"] == list
+    key
+    for key, settings in REPOSITORY_FIELD_CONFIG.items()
+    if settings["type"] == list and settings.get("class") is None
 ]
 
-CLASS_FIELDS = [
-    {
-        "dealbreakers": {
-            "editable": True,
-            "storage": "dealbreakers",
-        }
-    }
-]
+CLASS_FIELDS = ["dealbreakers"]
 
-DEAL_BREAKER_CONFIG = {"min_age", "max_age" "religion", "race", "gender"}
+DEAL_BREAKER_CONFIG = {"min_age", "max_age", "religion", "race", "gender"}

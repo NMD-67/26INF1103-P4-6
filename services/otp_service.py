@@ -4,7 +4,7 @@ from results.error import Error
 from results.success import Success
 from services.user_service import UserService
 from src.email import send_email
-import random
+import secrets
 
 
 class OTPService:
@@ -12,9 +12,9 @@ class OTPService:
         self.otp_repo = otp_repo
 
     async def send_otp(self, student_id: str) -> Result:
-        otp = random.randrange(1, 9999)
+        otp = secrets.randbelow(9000) + 1000
         upload_otp_result = self.otp_repo.create_otp(student_id, otp)
-        if upload_otp_result is None:
+        if not upload_otp_result:
             return Error("An error occured when creating OTP")
 
         email_address = f"{student_id}@sit.singaporetech.edu.sg"
@@ -24,7 +24,7 @@ class OTPService:
             html_content=f"Your OTP is {otp}",
         )
 
-        if email_response is None or email_response == 500:
+        if email_response != 200:
             return Error("An error occured when sending email")
         return Success("OTP email has been sent!")
 
@@ -37,7 +37,9 @@ class OTPService:
         if str(get_otp_result) != otp:
             return Error("OTP Mismatch")
 
-        self.otp_repo.delete_otp(student_id)
+        consumed = self.otp_repo.delete_otp(student_id, expected_otp=get_otp_result)
+        if not consumed:
+            return Error("OTP expired or already used. Please request a new code.")
         add_user_result = user_service.login_user(student_id)
         if not add_user_result.success:
             return add_user_result

@@ -14,12 +14,12 @@ class UserService:
     def login_user(self, student_id: str) -> Result:
         user = self.user_repo.get_user(student_id)
         if user:
-            return Success("User Verified")
+            return Success(user)
 
         try:
             new_user = self.user_repo.create(User(student_id=student_id))
             if new_user:
-                return Success("User Created")
+                return Success(new_user)
         except DuplicateStudentIdException as e:
             return Error(str(e))
 
@@ -43,11 +43,11 @@ class UserService:
 
     def filter_users_by_dealbreaker(self, student_id: str) -> Result:
         """Returns an array of users that fit the criteria for the student's deal breakers, used to feed the AI for matchmaking processing"""
-        # TODO: Val/Raph
-        # Call the user_repo method
-        # Check if user array is empty
-        # If empty, return error
-        # else return success with list[User] as data
+        users = self.user_repo.get_users_by_dealbreaker(student_id)
+
+        if not users:
+            return Error(f"No users found matching dealbreakers for student_id {student_id}")
+        return Success(users)
 
     def get_profile(self, student_id: str) -> Result:
         """Returns a user profile object, which includes dealbreakers"""

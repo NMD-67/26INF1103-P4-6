@@ -23,10 +23,10 @@ if __name__ == "__main__":
             SupabaseUserSource.from_env(),
             MatchService(MatchesRepo(pool)),
         )
-        results = service.recommend("2605770", limit=5)
+        results = service.recommend("2603197", limit=5)
         for cid, r in results.items():
             print(cid, r.score, r.reason)
-        print(service.save("2605770", results))
+        print(service.save("2603197", results))
     finally:
         keys.close()
         pool.close()

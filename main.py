@@ -24,22 +24,20 @@ def main():
     from config.user_fields import USER_FIELD_CONFIG, PROFILE_FIELDS
     from IO_Manager.console_io import ConsoleIO
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
-    from AI_Manager.Profile_Matching.groq_key_pool import GroqKeyPool
-    from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
+    from AI_Manager.Profile_Matching.lazy_groq_scorer import LazyGroqScorer
     from AI_Manager.Suggestions_generator import (
         SuggestionsGenerator,
         ConnectionSuggestionService,
     )
 
     pool = DatabaseConnection().create_pool()
-    key_pool = None
+    scoring = None
     suggestions_generator = None
     try:
         users = UserService(UserRepo(pool))
         matches = MatchService(MatchesRepo(pool))
         otp = OTPService(OTPRepo(pool))
-        key_pool = GroqKeyPool.from_env()
-        scoring = GroqScorer(key_pool)
+        scoring = LazyGroqScorer()
         suggestions_generator = SuggestionsGenerator.from_environment()
         suggestion_service = ConnectionSuggestionService(
             matches, users, suggestions_generator
@@ -65,8 +63,8 @@ def main():
                 suggestions_generator.close()
         finally:
             try:
-                if key_pool is not None:
-                    key_pool.close()
+                if scoring is not None:
+                    scoring.close()
             finally:
                 pool.close()
 

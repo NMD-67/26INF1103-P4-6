@@ -70,8 +70,9 @@ for existing imports, not duplicate implementations. Older spreadsheet modules
 remain outside the main CLI path and are not claimed to be fully migrated.
 
 Missing suggestion keys now disable suggestions gracefully while preserving
-mutual contacts. Login still needs working database/email credentials; matching
-still needs a valid scoring key. A network outage can still prevent login.
+mutual contacts. Login still needs working database/email credentials. Scoring clients are now
+created only when Find Matches is selected; missing scoring keys show an error
+and return to the menu instead of preventing login and profile operations. A network outage can still prevent login.
 
 The three-score AI integration is deliberately deferred. A passing offline suite
 is NOT proof that Find Matches can save the newly extended score result. Add a
@@ -90,3 +91,15 @@ Before submission:
 - Update UML for EmailSender, DatabaseConnection and RepositoryUserSource; include
   the exception matrix, new feature evidence, SOLID explanation and Team AI-d log
   in the report. Do not describe these documents as verified by the test suite.
+
+## Deferred scoring and legacy cleanup
+
+Main now owns a LazyGroqScorer. Its prepare method creates the existing GroqScorer
+and key pool only on demand, then reuses them until application exit. This does
+not change AI output fields or the pending three-score integration.
+
+Removed unused SupabaseUserSource and the old AI_Manager/Profile_Matching/Unused
+implementation. Removed empty repository placeholders and outdated debug/TODO
+comments. Keep the compatibility files in src, IO_Manager and Logic_Manager:
+Telegram and older tests still import them. Do not delete these without migrating
+those callers first. Git history retains the removed implementation.

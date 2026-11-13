@@ -9,9 +9,6 @@ import traceback
 from Logic_Manager import logic_manager
 from IO_Manager.profile_schema import PROFILE_FIELDS
 
-from supabase import create_client
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_API_KEY"])
-
 logger = logging.getLogger(__name__)
 SERVICE_ACCOUNT_FILE = Path(__file__).resolve().parent / "service_account.json"
 _spreadsheet = None
@@ -38,9 +35,9 @@ def get_sheet(name):
 
 def read_profile(student_id, sheet_name="users"):
     """Read exactly one student ID;
-     
-    Return None if missing; 
-    
+
+    Return None if missing;
+
     Return a dict of all columns if found;"""
     worksheet = get_sheet(sheet_name)
     headers = worksheet.row_values(1)
@@ -64,7 +61,9 @@ def safe_json_load(value):
         return json.dumps(value)
     return value
 
+
 _header_cache = {}
+
 
 def get_header_values(sheet: gspread.Worksheet):
     """
@@ -72,6 +71,7 @@ def get_header_values(sheet: gspread.Worksheet):
     if sheet.id not in _header_cache:
         _header_cache[sheet.id] = sheet.row_values(1)
     return _header_cache[sheet.id]
+
 
 def column_name_exists(worksheet, column_name):
     """
@@ -81,6 +81,7 @@ def column_name_exists(worksheet, column_name):
         return False
     else:
         return True
+
 
 def get_row_numbers_by_column_name(worksheet, column_name, value):
     """
@@ -98,16 +99,14 @@ def get_row_numbers_by_column_name(worksheet, column_name, value):
     col_index = headers.index(column_name) + 1
     col_values = worksheet.col_values(col_index)
 
-    matching_rows = [
-        i + 1 for i, v in enumerate(col_values)
-        if v == value and i != 0
-    ]
+    matching_rows = [i + 1 for i, v in enumerate(col_values) if v == value and i != 0]
 
     try:
-      return {"success": True, "rows": matching_rows}
+        return {"success": True, "rows": matching_rows}
     except ValueError:
-        return {"success": False, "error": f'Value {value} not found in column'}
-    
+        return {"success": False, "error": f"Value {value} not found in column"}
+
+
 def get_cell_value(worksheet, row_number, column_name):
     """
     Returns the value of a cell given the row number and column name"""
@@ -119,35 +118,39 @@ def get_cell_value(worksheet, row_number, column_name):
     value = worksheet.cell(row_number, col_index).value
     return {"success": True, "value": value}
 
+
 def delete_row(worksheet: gspread.Worksheet, row_number):
     # print(f'Deleting row {row_number} from {worksheet}')
     try:
         worksheet.delete_rows(row_number)
         return 200
     except Exception as e:
-        print(f'An error occured deleting row: {e}')
-        
+        print(f"An error occured deleting row: {e}")
+
 
 def get_row_values(worksheet, row_numbers):
-  """
-  Returns an array of dicts containing the column names and values
-  """
-  values = []
-  for row_number in row_numbers:
-    headers = get_header_values(worksheet)
-    row_values = worksheet.row_values(row_number)
+    """
+    Returns an array of dicts containing the column names and values
+    """
+    values = []
+    for row_number in row_numbers:
+        headers = get_header_values(worksheet)
+        row_values = worksheet.row_values(row_number)
 
-    row_values += [""] * (len(headers) - len(row_values))
+        row_values += [""] * (len(headers) - len(row_values))
 
-    # print(row_values)
-    values.append(dict(zip(headers, row_values)))
+        # print(row_values)
+        values.append(dict(zip(headers, row_values)))
 
-  return values
+    return values
+
 
 def update_field(worksheet, row, col, value):
     """
-    Update a specific cell in the worksheet given the row number, column number, and new value"""
+    Update a specific cell in the worksheet given the row number, column number, and new value
+    """
     worksheet.update_cell(row, col, value)
+
 
 def convert_list_to_dict(headers, values):
     """
@@ -156,17 +159,8 @@ def convert_list_to_dict(headers, values):
         raise ValueError("Headers and values must have the same length")
     return dict(zip(headers, values))
 
+
 # ---OTP Functions---
-def upload_otp(student_id, otp):
-    try:
-        supabase.table("otp").insert(
-            {"student_id": student_id, "otp": otp}
-        ).execute()
-        return 200
-    except Exception as e:
-        print(f"An error occured when creating otp: {e}")
-        logger.warning(f"Error: {e}")
-        return 500
 
 # def get_otp(student_id):
 #     try:
@@ -183,36 +177,21 @@ def upload_otp(student_id, otp):
 #         print(f"An error occured when checking otp: {e}")
 #         return 500
 
-def get_otp(student_id):
-    try:
-        get_otp_response = (
-            supabase.table("otp")
-            .select("otp")
-            .eq("student_id", student_id)
-            .execute()
-        )
-        rows = get_otp_response.data
-        otp = rows[0]["otp"]
-
-        logger.warning(f"Rows: {rows}")
-        return 200
-    except Exception as e:
-        logger.warning(f"Error in getting otp: {e}")
-        return 500
 
 def delete_otp(row_numbers):
-  try:  
-    # print(f'Delting otp {row_numbers}')
-    i = 0
-    for row_number in row_numbers:
-      # print(f"Deleting otp row {row_number}")
-      res = get_sheet("otp").delete_rows(row_number - i)
-      i += 1
-      # print(res)
-    return 200
-  except Exception as e:
-      print(f"Error deleting otp row {row_number}: {e}")
-      return 500
+    try:
+        # print(f'Delting otp {row_numbers}')
+        i = 0
+        for row_number in row_numbers:
+            # print(f"Deleting otp row {row_number}")
+            res = get_sheet("otp").delete_rows(row_number - i)
+            i += 1
+            # print(res)
+        return 200
+    except Exception as e:
+        print(f"Error deleting otp row {row_number}: {e}")
+        return 500
+
 
 # ---Bot Functions---
 def save_user(tele_id, student_id):
@@ -223,13 +202,15 @@ def save_user(tele_id, student_id):
     else:
         get_sheet("bot_users").append_row([tele_id, student_id])
 
+
 def get_bot_user(tele_id):
     cell = get_sheet("bot_users").find(str(tele_id))
-    if(cell):
+    if cell:
         row = get_sheet("bot_users").row_values(cell.row)
         student_id = row[1]
         return {"tele_id": tele_id, "student_id": student_id}
     return None
+
 
 # ---User Functions---
 def get_user(student_id):
@@ -256,7 +237,7 @@ def add_user(**fields):
 
         row = []  # build row matching sheet's real column order
         for column in headers:
-            value = fields.get(column, "") #Get the value at the column, default ""
+            value = fields.get(column, "")  # Get the value at the column, default ""
             if isinstance(value, (list, dict)):
                 value = json.dumps(value)
             row.append(value)
@@ -273,6 +254,7 @@ def add_user(**fields):
     except Exception as e:
         print(f"Error when adding user: {e}")
         return 500
+
 
 def update_user(**student_details):
     """
@@ -313,6 +295,7 @@ def update_user(**student_details):
     except Exception as e:
         print(f"Error updating user: {e}")
     return 500
+
 
 def delete_user(student_id):
     student_id = str(student_id).strip()
@@ -361,7 +344,9 @@ def delete_user(student_id):
                     try:
                         original = json.loads(cell)
                     except json.JSONDecodeError:
-                        original = [item.strip() for item in cell.split(",") if item.strip()]
+                        original = [
+                            item.strip() for item in cell.split(",") if item.strip()
+                        ]
 
                     if column == "recco_student_id":
                         if isinstance(original, dict):
@@ -370,7 +355,8 @@ def delete_user(student_id):
 
                         elif isinstance(original, list):
                             cleaned = [
-                                item for item in original
+                                item
+                                for item in original
                                 if str(item["id"]) != student_id
                             ]
 
@@ -406,9 +392,7 @@ def delete_user(student_id):
 
         # Update references before deleting any rows.
         for row_number, column_number, value in updates:
-            sheets["matches"].update_cell(
-                row_number, column_number, value
-            )
+            sheets["matches"].update_cell(row_number, column_number, value)
 
         # Delete bottom-up so row numbers do not shift.
         for name in ["matches", "bot_users", "otp", "users"]:
@@ -420,12 +404,15 @@ def delete_user(student_id):
     except Exception as error:
         print("Account deletion could not finish:", error)
         return 500
+
+
 # get_otp("2603197")
-#get_row_values(get_sheet("otp"), 2)
-#print(get_user("2676767"))
+# get_row_values(get_sheet("otp"), 2)
+# print(get_user("2676767"))
 # student_json = {"student_id": "234567", "name": "Giggg"}
 # print(update_user(**student_json))
 # get_header_values(get_sheet("users"))
+
 
 def sync_profile_to_sheets(profile: dict, partial=False) -> tuple[bool, str]:
     """Upload one profile; preserve all sheet fields outside the profile form.
@@ -442,14 +429,30 @@ def sync_profile_to_sheets(profile: dict, partial=False) -> tuple[bool, str]:
         for field in PROFILE_FIELDS:
             fields.append(field["key"])
         if len(headers) != len(set(headers)):
-            return False, "Google Sheets sync stopped: users headers are missing or duplicated."
+            return (
+                False,
+                "Google Sheets sync stopped: users headers are missing or duplicated.",
+            )
         for key in fields:
             if key not in headers:
-                return False, "Google Sheets sync stopped: users headers are missing or duplicated."
+                return (
+                    False,
+                    "Google Sheets sync stopped: users headers are missing or duplicated.",
+                )
             if not partial and key not in profile:
-                return False, "Google Sheets sync stopped: the profile is missing form fields."
-        if "match_preference" in profile and profile["match_preference"] not in ("Male", "Female", "Both"):
-            return False, "Google Sheets sync stopped: please re-enter your match preference."
+                return (
+                    False,
+                    "Google Sheets sync stopped: the profile is missing form fields.",
+                )
+        if "match_preference" in profile and profile["match_preference"] not in (
+            "Male",
+            "Female",
+            "Both",
+        ):
+            return (
+                False,
+                "Google Sheets sync stopped: please re-enter your match preference.",
+            )
 
         # For an edit, include only the fields that the caller supplied.
         if partial:
@@ -465,7 +468,10 @@ def sync_profile_to_sheets(profile: dict, partial=False) -> tuple[bool, str]:
             if row > 1 and str(value) == student_id:
                 matches.append(row)
         if len(matches) > 1:
-            return False, "Google Sheets sync stopped: duplicate student IDs need review."
+            return (
+                False,
+                "Google Sheets sync stopped: duplicate student IDs need review.",
+            )
 
         values = {}
         for key in fields:
@@ -489,6 +495,7 @@ def sync_profile_to_sheets(profile: dict, partial=False) -> tuple[bool, str]:
         if matches:
             # Write only owned fields, retaining unrelated columns.
             from gspread.utils import rowcol_to_a1
+
             updates = []
             row = matches[0]
             for key in fields:
@@ -509,7 +516,10 @@ def sync_profile_to_sheets(profile: dict, partial=False) -> tuple[bool, str]:
     except Exception as error:
         # Never print credentials, API response bodies or personal data.
         logger.warning("Google Sheets sync failed (%s)", type(error).__name__)
-        return False, "Google Sheets sync failed. Check spreadsheet access and connection."
+        return (
+            False,
+            "Google Sheets sync failed. Check spreadsheet access and connection.",
+        )
 
 
 # Profile functions used by the CLI and Telegram. Keep these signatures
@@ -521,7 +531,9 @@ def get_profile(student_id):
         return None
     profile = normalize_profile(profile)
     # Derived information is calculated when needed, not stored in a second file.
-    profile["profile_complete"] = logic_manager.is_profile_complete(profile, PROFILE_FIELDS)
+    profile["profile_complete"] = logic_manager.is_profile_complete(
+        profile, PROFILE_FIELDS
+    )
     return profile
 
 
@@ -564,10 +576,11 @@ def normalize_profile(profile):
         result[key] = clean_items
     return result
 
+
 # --------Matches---------
 def get_user_row(student_id):
     """
-    Returns an array of row values 
+    Returns an array of row values
     """
     worksheet = get_sheet("matches")
     row_numbers = get_row_numbers_by_column_name(worksheet, "student_id", student_id)
@@ -577,6 +590,7 @@ def get_user_row(student_id):
         return {"success": False, "error": f"Student ID {student_id} not found"}
     row_values = get_row_values(worksheet, row_numbers["rows"])[0]
     return {"success": True, "row_values": row_values}
+
 
 def get_user_recco_student_id(student_id):
     """
@@ -596,9 +610,17 @@ def get_user_recco_student_id(student_id):
         return {"success": True, "error": None, "recco_student_id": {}}
     try:
         recco_student_id_dict = json.loads(user_recco_student_id)
-        return {"success": True, "error": None, "recco_student_id": recco_student_id_dict}
+        return {
+            "success": True,
+            "error": None,
+            "recco_student_id": recco_student_id_dict,
+        }
     except json.JSONDecodeError:
-        return {"success": False, "error": f"Invalid JSON format for recco_student_id for student ID {student_id}"}
+        return {
+            "success": False,
+            "error": f"Invalid JSON format for recco_student_id for student ID {student_id}",
+        }
+
 
 def add_user_matches_row(student_id):
     """
@@ -616,6 +638,7 @@ def add_user_matches_row(student_id):
     except Exception as e:
         print(f"Error when adding user row to matches: {e}")
         return 500
+
 
 def update_matches_column(student_id, column_name, new_value):
     """
@@ -643,6 +666,7 @@ def update_matches_column(student_id, column_name, new_value):
         print(f"Error when updating {column_name}: {e}")
         return 500
 
+
 def add_to_recco_student_id(student_id: str, new_students: dict):
     """
     Add new students to a specific student's recco_student_id column in the matches sheet
@@ -663,18 +687,21 @@ def add_to_recco_student_id(student_id: str, new_students: dict):
             user_profile = {}
         current_recco_student_id = user_profile.get("recco_student_id")
         if current_recco_student_id is None or current_recco_student_id == "":
-          current_recco_student_id = {}
+            current_recco_student_id = {}
         else:
-          current_recco_student_id = json.loads(current_recco_student_id)
+            current_recco_student_id = json.loads(current_recco_student_id)
         for new_student_id, score in new_students.items():
-          current_recco_student_id[new_student_id] = score
-        return update_matches_column(student_id, "recco_student_id", json.dumps(current_recco_student_id))
+            current_recco_student_id[new_student_id] = score
+        return update_matches_column(
+            student_id, "recco_student_id", json.dumps(current_recco_student_id)
+        )
     except json.JSONDecodeError:
         return 500
     except Exception as e:
         traceback.print_exc()
         print(f"Error when adding to recco_student_id: {e}")
         return 500
+
 
 def remove_from_recco_student_id(student_id: str, students_to_remove: list):
     """
@@ -690,19 +717,22 @@ def remove_from_recco_student_id(student_id: str, students_to_remove: list):
             return 404
         current_recco_student_id = user_profile.get("recco_student_id")
         if current_recco_student_id is None or current_recco_student_id == "":
-          current_recco_student_id = {}
+            current_recco_student_id = {}
         else:
-          current_recco_student_id = json.loads(current_recco_student_id)
+            current_recco_student_id = json.loads(current_recco_student_id)
         for student_to_remove in students_to_remove:
-          if student_to_remove in current_recco_student_id:
-            del current_recco_student_id[student_to_remove]
-        return update_matches_column(student_id, "recco_student_id", json.dumps(current_recco_student_id))
+            if student_to_remove in current_recco_student_id:
+                del current_recco_student_id[student_to_remove]
+        return update_matches_column(
+            student_id, "recco_student_id", json.dumps(current_recco_student_id)
+        )
     except json.JSONDecodeError:
         return 500
     except Exception as e:
         traceback.print_exc()
         print(f"Error when removing from recco_student_id: {e}")
         return 500
+
 
 def add_to_accepted_student_id(student_id: str, new_students: list):
     """
@@ -718,19 +748,22 @@ def add_to_accepted_student_id(student_id: str, new_students: list):
             return 404
         current_accepted_student_id = user_profile.get("accepted_student_id")
         if current_accepted_student_id is None or current_accepted_student_id == "":
-          current_accepted_student_id = []
+            current_accepted_student_id = []
         else:
-          current_accepted_student_id = json.loads(current_accepted_student_id)
+            current_accepted_student_id = json.loads(current_accepted_student_id)
         for new_student in new_students:
-          if new_student not in current_accepted_student_id:
-            current_accepted_student_id.append(new_student)
-        return update_matches_column(student_id, "accepted_student_id", json.dumps(current_accepted_student_id))
+            if new_student not in current_accepted_student_id:
+                current_accepted_student_id.append(new_student)
+        return update_matches_column(
+            student_id, "accepted_student_id", json.dumps(current_accepted_student_id)
+        )
     except json.JSONDecodeError:
         return 500
     except Exception as e:
         traceback.print_exc()
         print(f"Error when adding to accepted_student_id: {e}")
         return 500
+
 
 def remove_from_accepted_student_id(student_id: str, students_to_remove: list):
     """
@@ -746,19 +779,22 @@ def remove_from_accepted_student_id(student_id: str, students_to_remove: list):
             return 404
         current_accepted_student_id = user_profile.get("accepted_student_id")
         if current_accepted_student_id is None or current_accepted_student_id == "":
-          current_accepted_student_id = []
+            current_accepted_student_id = []
         else:
-          current_accepted_student_id = json.loads(current_accepted_student_id)
+            current_accepted_student_id = json.loads(current_accepted_student_id)
         for student_to_remove in students_to_remove:
-          if student_to_remove in current_accepted_student_id:
-            current_accepted_student_id.remove(student_to_remove)
-        return update_matches_column(student_id, "accepted_student_id", json.dumps(current_accepted_student_id))
+            if student_to_remove in current_accepted_student_id:
+                current_accepted_student_id.remove(student_to_remove)
+        return update_matches_column(
+            student_id, "accepted_student_id", json.dumps(current_accepted_student_id)
+        )
     except json.JSONDecodeError:
         return 500
     except Exception as e:
         traceback.print_exc()
         print(f"Error when removing from accepted_student_id: {e}")
         return 500
+
 
 def get_accepted_student_id(student_id: str):
     """
@@ -771,23 +807,32 @@ def get_accepted_student_id(student_id: str):
     try:
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
-                return {
-                    "success": True,
-                    "error": None,
-                    "accepted_student_id": []
-                }
+            return {"success": True, "error": None, "accepted_student_id": []}
         current_accepted_student_id = user_profile.get("accepted_student_id")
         if current_accepted_student_id is None or current_accepted_student_id == "":
             return {"success": True, "error": None, "accepted_student_id": []}
         else:
             current_accepted_student_id = json.loads(current_accepted_student_id)
-            return {"success": True, "error": None, "accepted_student_id": current_accepted_student_id}
+            return {
+                "success": True,
+                "error": None,
+                "accepted_student_id": current_accepted_student_id,
+            }
     except json.JSONDecodeError:
-        return {"success": False, "error": f"Invalid JSON format for accepted_student_id for student ID {student_id}", "accepted_student_id": []}
+        return {
+            "success": False,
+            "error": f"Invalid JSON format for accepted_student_id for student ID {student_id}",
+            "accepted_student_id": [],
+        }
     except Exception as e:
         traceback.print_exc()
         print(f"Error when getting accepted_student_id: {e}")
-        return {"success": False, "error": f"Error when getting accepted_student_id: {e}", "accepted_student_id": []}
+        return {
+            "success": False,
+            "error": f"Error when getting accepted_student_id: {e}",
+            "accepted_student_id": [],
+        }
+
 
 def get_rejected_student_id(student_id: str):
     """
@@ -800,19 +845,36 @@ def get_rejected_student_id(student_id: str):
     try:
         user_profile = read_profile(student_id, sheet_name="matches")
         if user_profile is None:
-            return {"success": False, "error": f"Student ID {student_id} not found", "rejected_student_id": []}
+            return {
+                "success": False,
+                "error": f"Student ID {student_id} not found",
+                "rejected_student_id": [],
+            }
         current_rejected_student_id = user_profile.get("rejected_student_id")
         if current_rejected_student_id is None or current_rejected_student_id == "":
             return {"success": True, "error": None, "rejected_student_id": []}
         else:
             current_rejected_student_id = json.loads(current_rejected_student_id)
-            return {"success": True, "error": None, "rejected_student_id": current_rejected_student_id}
+            return {
+                "success": True,
+                "error": None,
+                "rejected_student_id": current_rejected_student_id,
+            }
     except json.JSONDecodeError:
-        return {"success": False, "error": f"Invalid JSON format for rejected_student_id for student ID {student_id}", "rejected_student_id": []}
+        return {
+            "success": False,
+            "error": f"Invalid JSON format for rejected_student_id for student ID {student_id}",
+            "rejected_student_id": [],
+        }
     except Exception as e:
         traceback.print_exc()
         print(f"Error when getting rejected_student_id: {e}")
-        return {"success": False, "error": f"Error when getting rejected_student_id: {e}", "rejected_student_id": []}
+        return {
+            "success": False,
+            "error": f"Error when getting rejected_student_id: {e}",
+            "rejected_student_id": [],
+        }
+
 
 def add_to_rejected_student_id(student_id: str, new_students: list):
     """
@@ -828,13 +890,15 @@ def add_to_rejected_student_id(student_id: str, new_students: list):
             return 404
         current_rejected_student_id = user_profile.get("rejected_student_id")
         if current_rejected_student_id is None or current_rejected_student_id == "":
-          current_rejected_student_id = []
+            current_rejected_student_id = []
         else:
-          current_rejected_student_id = json.loads(current_rejected_student_id)
+            current_rejected_student_id = json.loads(current_rejected_student_id)
         for new_student in new_students:
-          if new_student not in current_rejected_student_id:
-            current_rejected_student_id.append(new_student)
-        return update_matches_column(student_id, "rejected_student_id", json.dumps(current_rejected_student_id))
+            if new_student not in current_rejected_student_id:
+                current_rejected_student_id.append(new_student)
+        return update_matches_column(
+            student_id, "rejected_student_id", json.dumps(current_rejected_student_id)
+        )
     except json.JSONDecodeError:
         return 500
     except Exception as e:
@@ -842,7 +906,8 @@ def add_to_rejected_student_id(student_id: str, new_students: list):
         print(f"Error when adding to rejected_student_id: {e}")
         return 500
 
-#print(add_to_accepted_student_id("1009", ["7654321", "9876543"]))
+
+# print(add_to_accepted_student_id("1009", ["7654321", "9876543"]))
 # print(remove_from_accepted_student_id("1009", ["7654321"]))
 # print(get_rejected_student_id("1009"))
 # print(get_accepted_student_id("1009"))

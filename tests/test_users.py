@@ -5,6 +5,7 @@ from repositories.user_repo import UserRepo
 from models.user import User
 from Data_Manager.database.connection import create_connection_pool
 from models.dealbreaker import DealBreaker
+from repositories.otp_repo import OTPRepo
 
 pool = (
     create_connection_pool()
@@ -13,6 +14,11 @@ user_repo = UserRepo(pool)
 user_service = UserService(user_repo)
 match_repo = MatchesRepo(pool)
 match_service = MatchService(match_repo)
+otp_repo = OTPRepo(pool)
+
+# Test OTP
+otp_repo.create_otp("1234567", "6767")
+otp_repo.get_otp("1234567")
 
 # Test create user acc
 test_user = User(student_id="1234567", name="TEST_ACC")

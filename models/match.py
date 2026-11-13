@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from models.user import User
 
 if TYPE_CHECKING:
-    from AI_Manager.matchmaking_ai import MatchmakingAIManager
+    from AI_Manager.Suggestions_generator.suggestions_generator import SuggestionsGenerator
 
 
 @dataclass
@@ -19,7 +19,7 @@ class Match(User):
     def generate_reccos(
         self,
         viewing_user: User,
-        ai_manager: "MatchmakingAIManager",
+        ai_manager: "SuggestionsGenerator",
     ) -> dict:
         """Generate recommendations for the viewing user and this match.
 

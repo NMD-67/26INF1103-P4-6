@@ -6,7 +6,8 @@ from models.dealbreaker import DealBreaker
 class User:
     student_id: str
     name: str = None
-    birthday: int = None
+    age: int = None
+    horoscope: str = None
     gender: str = None
     year: int = None
     course: str = None
@@ -22,9 +23,13 @@ class User:
     hobbies: list[str] = field(default_factory=list)
     interest_groups: list[str] = field(default_factory=list)
     tele_handle: str = None
+    insta_handle: str = None
 
     @classmethod
     def from_dict(cls, data: dict):
+        data = data.copy()
+        if "interests" in data and "interest_groups" not in data:
+            data["interest_groups"] = data["interests"]
         class_fields = {field.name for field in fields(cls)}
         return cls(**{key: value for key, value in data.items() if key in class_fields})
 
@@ -38,5 +43,7 @@ class User:
 
     def print_user_details(self) -> None:
         user_obj = self.get_user_details()
+        print("=============================")
         for attr, value in user_obj.items():
             print(f"{attr}: {value}")
+        print("=============================")

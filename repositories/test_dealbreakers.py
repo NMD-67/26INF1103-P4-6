@@ -1,13 +1,16 @@
 import os
+from pathlib import Path
 import sys
 from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
+from psycopg_pool import ConnectionPool, pool
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from repositories.user_repo import UserRepo
 from services.user_service import UserService   # adjust to your real path
 from results.success import Success
 from results.error import Error
 from dotenv import load_dotenv
+
 
 load_dotenv()
 DB_URL = os.environ["SUPABASE_URL"]   # or rename the key in .env to DATABASE_URL, which is clearer
@@ -21,7 +24,7 @@ def violations(repo: UserRepo, user, d: dict) -> list[str]:
 
   min_age, max_age = d.get("min_age"), d.get("max_age")
   if min_age is not None or max_age is not None:
-    age = repo._age(user.birthday)
+    age = user.age
     if age is None or (min_age is not None and age < min_age) or (max_age is not None and age > max_age):
       failed.append("age")
 
@@ -39,20 +42,10 @@ def violations(repo: UserRepo, user, d: dict) -> list[str]:
 def main():
   with ConnectionPool(DB_URL, kwargs={"row_factory": dict_row, "autocommit": True}) as pool:
     repo = UserRepo(pool)
-    service = UserService(repo)
-
-    # example user: pass a student_id as an argument, or use the first one with dealbreakers
-    if len(sys.argv) > 1:
-      student_id = sys.argv[1]
-    else:
-      with pool.connection() as conn:
-        row = conn.execute("SELECT student_id FROM dealbreakers LIMIT 1").fetchone()
-      if not row:
-        print("No rows in dealbreakers table, nothing to test.")
-        return
-      student_id = row["student_id"]
-
-    print(f"Example user: {student_id}")
+    service = UserService(repo) 
+    print(repo.get_all_users())
+    # use a student_id that exists in your database for testing
+    student_id = "1234567"
 
     # --- read dealbreakers ---
     d = repo.get_dealbreaker(student_id)
@@ -88,7 +81,6 @@ def main():
     print("Service result:", type(result).__name__)
 
     print("\nAll checks passed.")
-
-
+  
 if __name__ == "__main__":
   main()

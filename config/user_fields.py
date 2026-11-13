@@ -398,14 +398,14 @@ USER_FIELD_CONFIG = {
 PROFILE_FIELDS = [
     {"key": settings.get("form_key", key), **settings}
     for key, settings in USER_FIELD_CONFIG.items()
-    if not settings.get("derived", False)
+    if "question" in settings and not settings.get("derived", False)
 ]
 
 # Display derived values in the profile without adding input questions.
 PROFILE_DISPLAY_FIELDS = [
-    {"key": settings.get("form_key", key), **settings}
+    {**settings, "key": settings.get("form_key", key)}
     for key, settings in USER_FIELD_CONFIG.items()
-    if key != "birthday"
+    if "section" in settings and key != "birthday"
 ]
 
 # Do not make existing SQL queries request columns that have not been migrated yet.

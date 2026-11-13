@@ -1,49 +1,16 @@
-# CompatibilityScorer (ABC), GroqScorer, FakeScorer
-
-"""
-AI Profile Matching
---------------------
-Scores compatibility between a given main user and every other user via
-the Groq API, and writes the results back to the "matches" tab.
-
-"""
-
-import os          
 import json
 import math
 import time
 import logging
-from abc import ABC, abstractmethod
-
-logger = logging.getLogger(__name__)
 
 import groq
-from groq import Groq                      # new
-from dotenv import load_dotenv             # new
 
 from models.user import User
+from .compatibility_scorer import CompatibilityScorer
+from .groq_key_pool import GroqKeyPool
 from .score_result import ScoreResult
 
-load_dotenv()
-
-
-def get_groq_client():
-    api_key = os.getenv("PROFILE_MATCHING_API_KEY") or os.getenv("GROQ_API_KEY")
-    if not api_key or not api_key.strip():
-        raise RuntimeError(
-            "Missing Groq API key. Set PROFILE_MATCHING_API_KEY or GROQ_API_KEY."
-        )
-    try:
-        return Groq(api_key=api_key.strip(), timeout=30.0)
-    except Exception as e:
-        raise RuntimeError(f"Failed to create Groq client: {e}") from e
-    
-class CompatibilityScorer(ABC):
-    """Contract: anything that can score a pair of users."""
-
-    @abstractmethod
-    def score(self, main_user: User, candidate: User) -> ScoreResult | None:
-        """Return a ScoreResult, or None if scoring failed. Never raises."""
+logger = logging.getLogger(__name__)
 
 
 class GroqScorer(CompatibilityScorer):
@@ -62,15 +29,14 @@ class GroqScorer(CompatibilityScorer):
         '{"score": <integer 0-100>, "reason": "<one sentence>"}'
     )
 
-    def __init__(self, client, model="openai/gpt-oss-20b", max_attempts=3):
-        self._client = client            # injected: aggregation (client outlives scorer)
+    def __init__(self, key_pool: GroqKeyPool, model="openai/gpt-oss-20b", max_attempts=3):
+        self._pool = key_pool
         self._model = model
         self._max_attempts = max_attempts
 
-    # ---- public API ----
     def score(self, main_user, candidate):
-        if self._client is None:
-            logger.error("No Groq client supplied")
+        if self._pool.client is None:
+            logger.error("No Groq keys available")
             return None
         try:
             content = self._build_prompt(main_user, candidate)
@@ -78,10 +44,15 @@ class GroqScorer(CompatibilityScorer):
             logger.exception("Could not build prompt for %s", candidate.student_id)
             return None
 
-        for attempt in range(1, self._max_attempts + 1):
+        attempt = 1
+        while attempt <= self._max_attempts:
             try:
-                raw = self._call_api(content)
-                return self._parse_and_validate(raw)
+                return self._parse_and_validate(self._call_api(content))
+            except groq.RateLimitError as e:
+                logger.warning("Rate limit/quota hit: %s", e)
+                if self._pool.rotate():
+                    continue
+                return None
             except ValueError as e:
                 logger.warning("Malformed response (%d/%d): %s", attempt, self._max_attempts, e)
             except (groq.AuthenticationError, groq.PermissionDeniedError,
@@ -90,7 +61,7 @@ class GroqScorer(CompatibilityScorer):
                 logger.error("Permanent API error: %s", e)
                 return None
             except (groq.APIConnectionError, groq.APITimeoutError,
-                    groq.RateLimitError, groq.InternalServerError) as e:
+                    groq.InternalServerError) as e:
                 logger.warning("Transient API error (%d/%d): %s", attempt, self._max_attempts, e)
             except (groq.APIStatusError, groq.GroqError):
                 logger.exception("Groq error")
@@ -98,14 +69,19 @@ class GroqScorer(CompatibilityScorer):
             except Exception:
                 logger.exception("Unexpected error scoring %s", candidate.student_id)
                 return None
+            except (groq.RateLimitError, groq.AuthenticationError) as e:
+                logger.warning("Key rejected or rate limited: %s", e)
+                if self._pool.rotate():
+                    continue
+                return None
 
             if attempt < self._max_attempts:
                 time.sleep(2 ** (attempt - 1))
+            attempt += 1
 
         logger.error("Giving up on %s", candidate.student_id)
         return None
 
-    # ---- private helpers ----
     def _to_ai_dict(self, user: User) -> dict:
         details = user.get_user_details()
         return {f: details.get(f) if details.get(f) is not None else ""
@@ -118,7 +94,7 @@ class GroqScorer(CompatibilityScorer):
         )
 
     def _call_api(self, user_content: str) -> str:
-        response = self._client.chat.completions.create(
+        response = self._pool.client.chat.completions.create(
             model=self._model,
             max_completion_tokens=1024,
             reasoning_effort="low",
@@ -161,13 +137,3 @@ class GroqScorer(CompatibilityScorer):
         if not isinstance(reason, str) or not reason.strip():
             reason = None
         return ScoreResult(score=int(round(score)), reason=reason)
-
-
-class FakeScorer(CompatibilityScorer):
-    """Test double: substitutable for GroqScorer (LSP), no API needed."""
-
-    def __init__(self, fixed_score=50):
-        self._fixed = fixed_score
-
-    def score(self, main_user, candidate):
-        return ScoreResult(self._fixed, "fake reason")

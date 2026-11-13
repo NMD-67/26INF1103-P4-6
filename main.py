@@ -23,7 +23,7 @@ def main():
     from config.user_fields import USER_FIELD_CONFIG, PROFILE_FIELDS
     from IO_Manager.console_io import ConsoleIO
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
-    from AI_Manager.Profile_Matching.scoring import get_groq_client
+    from AI_Manager.Profile_Matching.compatibility_scorer import get_groq_client
     from AI_Manager.Profile_Matching.ai_manager import AIManager
     from AI_Manager.matchmaking_ai import (
         MatchmakingAIManager,

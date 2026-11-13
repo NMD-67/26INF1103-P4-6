@@ -39,10 +39,13 @@ class SuggestionsGenerator:
     @classmethod
     def from_environment(cls) -> "SuggestionsGenerator":
         """Read the original primary and backup key names from .env."""
-        primary_key = os.getenv("MATCHMAKING_API_KEY")
+        primary_key = (os.getenv("MATCHMAKING_API_KEY") or "").strip()
+        backup_key = (os.getenv("RAPH_AI_KEY") or "").strip()
         if not primary_key:
-            raise RuntimeError("MATCHMAKING_API_KEY is not configured")
-        backup_key = os.getenv("RAPH_AI_KEY")
+            primary_key, backup_key = backup_key, ""
+        if not primary_key:
+            logger.warning("Suggestion API keys are not configured; suggestions are unavailable")
+            return cls(primary=None)
         primary = Groq(
             api_key=primary_key.strip(),
             timeout=cls.API_TIMEOUT_SECONDS,
@@ -50,11 +53,15 @@ class SuggestionsGenerator:
         )
         backup = None
         if backup_key and backup_key.strip() != primary_key.strip():
-            backup = Groq(
-                api_key=backup_key.strip(),
-                timeout=cls.API_TIMEOUT_SECONDS,
-                max_retries=0,
-            )
+            try:
+                backup = Groq(
+                    api_key=backup_key.strip(),
+                    timeout=cls.API_TIMEOUT_SECONDS,
+                    max_retries=0,
+                )
+            except Exception:
+                primary.close()
+                raise
         return cls(primary=primary, backup=backup)
 
     def close(self):
@@ -141,9 +148,9 @@ Do not mention student names or labels Student A / Student B in the suggestions.
         except (TypeError, AttributeError, ValueError) as error:
             return {"success": False, "error": f"Invalid profile: {error}"}
 
-        clients = [self._primary]
-        if self._backup is not None:
-            clients.append(self._backup)
+        clients = [client for client in (self._primary, self._backup) if client is not None]
+        if not clients:
+            return {"success": False, "error": "AI suggestions are not configured."}
         last_error = "AI service unavailable"
         for index, client in enumerate(clients, start=1):
             for attempt in range(self.MAX_ATTEMPTS):

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     # Import inside the startup boundary so configuration/import failures are logged.
-    from Data_Manager.database.connection import create_connection_pool
+    from Data_Manager.database.database_connection import DatabaseConnection
     from repositories.user_repo import UserRepo
     from repositories.otp_repo import OTPRepo
     from repositories.matches_repo import MatchesRepo
@@ -31,7 +31,7 @@ def main():
         ConnectionSuggestionService,
     )
 
-    pool = create_connection_pool()
+    pool = DatabaseConnection().create_pool()
     key_pool = None
     suggestions_generator = None
     try:

@@ -19,7 +19,12 @@ class MatchingService:
         if main is None:
             logger.error("User %s not found", student_id)
             return {}
-        candidates = self._users.get_candidates(student_id, exclude=set())
+        decisions = self._match_service.get_decided_candidate_ids(student_id)
+        if not decisions.success:
+            raise RuntimeError("Could not read previous matching decisions")
+        excluded = {str(value) for value in decisions.data}
+        excluded.add(str(student_id))
+        candidates = self._users.get_candidates(student_id, exclude=excluded)
         if limit:
             candidates = candidates[:limit]
 

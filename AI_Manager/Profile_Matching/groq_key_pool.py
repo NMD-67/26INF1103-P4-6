@@ -1,3 +1,5 @@
+# Owns one Groq client per API key and switches to the next key when one is rate-limited or rejected.
+
 import os
 import logging
 

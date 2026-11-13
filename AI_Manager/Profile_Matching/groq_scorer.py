@@ -1,3 +1,5 @@
+# Concrete scorer that builds the prompt, calls the Groq API, then parses, validates, and retries the response.
+
 import json
 import math
 import time

@@ -1,3 +1,5 @@
+# Abstract interface defining how users and candidates are loaded, independent of the data store.
+
 from abc import ABC, abstractmethod
 
 from models.user import User

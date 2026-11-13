@@ -1,3 +1,5 @@
+# Runner script that wires the objects together and executes one matching run (contains no classes).
+
 from pathlib import Path
 
 from dotenv import load_dotenv

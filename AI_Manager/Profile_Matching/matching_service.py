@@ -1,4 +1,5 @@
-# scorer + repo + logic, orchestrates only
+# Orchestrates loading users, scoring each candidate, and saving the results through the match service.
+
 import logging
 logger = logging.getLogger(__name__)
 

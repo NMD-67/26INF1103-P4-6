@@ -1,4 +1,4 @@
-# ScoreResult (value object)
+# Immutable value object holding one compatibility score and its short reason.
 
 from dataclasses import dataclass
 

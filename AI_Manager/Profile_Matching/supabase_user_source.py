@@ -1,3 +1,5 @@
+# Concrete user source that reads User objects from the Supabase users table.
+
 import os
 
 from supabase import create_client

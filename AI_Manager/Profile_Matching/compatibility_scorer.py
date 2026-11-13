@@ -1,3 +1,4 @@
+# Abstract base class defining the contract that any scorer must provide a score(main_user, candidate) method.
 from abc import ABC, abstractmethod
 
 from models.user import User

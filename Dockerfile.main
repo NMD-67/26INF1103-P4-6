@@ -23,5 +23,6 @@ COPY exceptions/ ./exceptions/
 COPY main.py automated_test_script.py ./
 COPY sitogether_app.py ./
 COPY ci/ ./ci/
+COPY tests/test_mutual_preference_filter.py ./tests/test_mutual_preference_filter.py
 
 CMD ["python", "main.py"]

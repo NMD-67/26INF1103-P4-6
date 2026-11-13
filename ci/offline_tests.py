@@ -242,9 +242,9 @@ class OfflineChecks(unittest.TestCase):
         from AI_Manager.Profile_Matching.groq_key_pool import GroqKeyPool
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
         with patch.dict("os.environ", {"SUPABASE_URL": "postgresql://invalid/unused"}):
-            connection = import_module("Data_Manager.database.connection")
+            connection = import_module("Data_Manager.database.database_connection")
         with ExitStack() as mocks:
-            pool = mocks.enter_context(patch.object(connection, "create_connection_pool"))
+            pool = mocks.enter_context(patch.object(connection.DatabaseConnection, "create_pool"))
             keys = mocks.enter_context(patch.object(GroqKeyPool, "from_env"))
             suggestions = mocks.enter_context(patch.object(SuggestionsGenerator, "from_environment"))
             run = mocks.enter_context(patch.object(main.SITogetherApp, "run"))
@@ -263,6 +263,14 @@ class OfflineChecks(unittest.TestCase):
                 pool.return_value.close.assert_called_once()
                 keys.return_value.close.assert_called_once()
                 suggestions.return_value.close.assert_called_once()
+
+
+def load_tests(loader, tests, pattern):
+    # Only maintained offline checks; never discover scripts that call live services.
+    from ci.quality_tests import QualityChecks
+    tests.addTests(loader.loadTestsFromTestCase(QualityChecks))
+    tests.addTests(loader.discover(str(ROOT / "tests"), pattern="test_mutual_preference_filter.py"))
+    return tests
 
 
 if __name__ == "__main__":

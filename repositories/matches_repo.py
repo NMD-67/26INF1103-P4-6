@@ -35,6 +35,9 @@ class MatchesRepo:
         student_id: str,
         candidate_id: str,
         compatibility_score: float,
+        interest_score: int,
+        personality_score: int,
+        preferences_score: int,
         reason: str = None,
     ) -> bool:
         """Create a new match in the database."""
@@ -42,14 +45,14 @@ class MatchesRepo:
         with self.pool.connection() as conn:
             result = conn.execute(
                 """
-              INSERT INTO matches (student_id, candidate_id, compatibility_score, reason, status)
-              VALUES (%s, %s, %s, %s, 'pending')
+              INSERT INTO matches (student_id, candidate_id, compatibility_score, reason, interest_score, personality_score, preferences_score, status)
+              VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
               ON CONFLICT (student_id, candidate_id) 
               DO UPDATE SET compatibility_score = EXCLUDED.compatibility_score,
                             reason = EXCLUDED.reason
               RETURNING student_id
               """,
-                (student_id, candidate_id, compatibility_score, reason),
+                (student_id, candidate_id, compatibility_score, reason, interest_score, personality_score, preferences_score),
             ).fetchone()
         return result is not None
 
@@ -63,7 +66,7 @@ class MatchesRepo:
         with self.pool.connection() as conn:
             candidate_result = conn.execute(
                 f"""
-              SELECT {user_fields_str}, m.compatibility_score, m.status, m.reason
+              SELECT {user_fields_str}, m.compatibility_score, m.status, m.reason, m.interest_score, m.personality_score, m.preferences_score
               FROM matches m
               JOIN users u ON m.candidate_id = u.student_id
               WHERE m.student_id = %s AND m.status = 'pending'

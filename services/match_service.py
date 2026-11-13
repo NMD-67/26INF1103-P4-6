@@ -13,12 +13,15 @@ class MatchService:
         self,
         student_id: str,
         candidate_id: str,
-        compatibility_score: float,
+        compatibility_score: int,
+        interest_score: int,
+        personality_score: int,
+        preferences_score: int,
         reason: str = None,
     ) -> Result:
         """Create a new match in the database."""
         success = self.match_repo.create_match(
-            student_id, candidate_id, compatibility_score, reason
+            student_id, candidate_id, compatibility_score, reason, interest_score, personality_score, preferences_score
         )
         if success:
             return Success(data={"message": "Match created successfully"})

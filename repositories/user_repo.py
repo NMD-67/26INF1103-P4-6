@@ -5,6 +5,7 @@ from exceptions.duplicate_student_id import DuplicateStudentIdException
 from models.user import User
 from models.profile import Profile
 from models.dealbreaker import DealBreaker
+from Logic_Manager.Matching.mutual_preference_filter import MutualPreferenceFilter
 from config.user_fields import (
     USER_FIELD_CONFIG,
     LIST_FIELDS,
@@ -290,42 +291,38 @@ class UserRepo:
         return bool(set(values) & set(allowed))
     
     def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
-        """Return users who satisfy the given student's dealbreakers."""
-        users = [u for u in self.get_all_users() if u.student_id != student_id]
+        """Filter candidates in both directions before they are sent to AI.
 
-        dealbreaker = self.get_dealbreaker(student_id)
-        if not dealbreaker:
-            return users
+        Every student must satisfy the other's selected gender, age range,
+        and race/religion blacklists. Load restrictions in a single SQL query.
+        """
+        all_users = self.get_all_users()
+        student = next(
+            (u for u in all_users if str(u.student_id) == str(student_id)), None
+        )
+        if student is None:
+            return []
 
-        # 1. gender
-        gender = dealbreaker.get("gender")
-        if gender:
-            users = [u for u in users if u.gender == gender]
+        user_ids = [str(u.student_id) for u in all_users]
+        with self.pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM dealbreakers WHERE student_id = ANY(%s)",
+                (user_ids,),
+            ).fetchall()
 
-        # 2. age
-        min_age = dealbreaker.get("min_age")
-        max_age = dealbreaker.get("max_age")
-        if min_age is not None or max_age is not None:
-            def in_range(u):
-                age = u.age
-                return (
-                    age is not None
-                    and (min_age is None or age >= min_age)
-                    and (max_age is None or age <= max_age)
-                )
-            users = [u for u in users if in_range(u)]
+        preferences_by_id = {str(row["student_id"]): dict(row) for row in rows}
+        student_preferences = preferences_by_id.get(str(student.student_id))
+        mutual_filter = MutualPreferenceFilter()
+        return [
+            candidate for candidate in all_users
+            if mutual_filter.is_eligible(
+                student,
+                candidate,
+                student_preferences,
+                preferences_by_id.get(str(candidate.student_id)),
+            )
+        ]
 
-        # 3. religion
-        religions = dealbreaker.get("religion") or []
-        if religions:
-            users = [u for u in users if not self._overlaps(u.religion, religions)]
-
-        # 4. race
-        races = dealbreaker.get("race") or []
-        if races:
-            users = [u for u in users if not self._overlaps(u.race, races)]
-
-        return users
     def test():
         """Test method to verify the functionality of the UserRepo class."""
         # Implement test cases here

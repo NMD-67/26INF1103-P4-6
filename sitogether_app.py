@@ -189,6 +189,7 @@ class SITogetherApp:
         if not eligible.success:
             self._io.show_error(eligible.error_msg)
             return
+        # Respect existing accept/reject decisions and current mutual preferences.
         decisions = self._matches.get_decided_candidate_ids(self._student_id)
         if not decisions.success:
             self._io.show_error(decisions.error_msg)
@@ -217,6 +218,7 @@ class SITogetherApp:
         if not result.success:
             self._io.show_error(result.error_msg)
             return
+        # Re-check stored recommendations against current preferences and decisions.
         current_candidates = [candidate for candidate in result.data
                               if str(candidate.student_id) in eligible_ids]
         if not current_candidates:

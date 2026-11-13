@@ -66,29 +66,32 @@ def user_to_ai_dict(user: User) -> dict:
 
 # Call GROQ AI to get a compatibility score for a pair of profiles
 def get_compatibility_score(client, main_user: User, candidate: User):
-    """Scores ONE pair of Users. Returns an int 0-100, or None on failure. Never raises."""
+    """Scores ONE pair of Users. Returns (score, reason): score is an int 0-100, reason is a short string or None. Returns (None, None) on failure. Never raises."""
 
     max_attempts = 3
 
     if client is None:
         logger.error("No Groq client supplied")
-        return None
+        return None, None
 
     try:
         main_user = to_user(main_user)
         candidate = to_user(candidate)
     except (ValueError, TypeError) as e:
         logger.warning("Skipping: bad profile data: %s", e)
-        return None
+        return None, None
 
     candidate_id = candidate.student_id
 
     instructions = (
-    "You compare two user dating/matching profiles and return a single "
-    "compatibility score from 0 to 100, based on shared interests, "
-    "lifestyle, and stated preferences. "
-    "Respond ONLY with valid JSON in this exact format, no other text: "
-    '{"score": <integer 0-100>}'
+        "You compare two user dating/matching profiles and return a single "
+        "compatibility score from 0 to 100, based on shared interests, "
+        "lifestyle, and stated preferences. "
+        "Also give a short reason (one sentence, max 20 words) that mentions "
+        "the specific things the two users have in common or clash on. "
+        "Empty fields mean the information is unknown, not incompatible. "
+        "Respond ONLY with valid JSON in this exact format, no other text: "
+        '{"score": <integer 0-100>, "reason": "<one sentence>"}'
     )
 
     try:
@@ -99,7 +102,7 @@ def get_compatibility_score(client, main_user: User, candidate: User):
         user_content = json.dumps(payload, default=str)
     except Exception:
         logger.exception("Unexpected error building prompt for candidate %s", candidate_id)
-        return None
+        return None, None
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -138,6 +141,7 @@ def get_compatibility_score(client, main_user: User, candidate: User):
             if "score" not in parsed:
                 raise ValueError("JSON missing 'score' key")
 
+            # Validate score
             score = parsed["score"]
             if isinstance(score, bool) or not isinstance(score, (int, float)):
                 raise ValueError(f"Score is not a number: {score!r}")
@@ -146,8 +150,13 @@ def get_compatibility_score(client, main_user: User, candidate: User):
             if not (0 <= score <= 100):
                 raise ValueError(f"Score out of range: {score}")
 
-            return int(round(score))
+            # Validate reason
+            reason = parsed.get("reason")
+            if not isinstance(reason, str) or not reason.strip():
+                reason = None
 
+            return int(round(score)), reason
+        
         except ValueError as e:
             # Malformed model output: retry
             logger.warning(
@@ -163,7 +172,7 @@ def get_compatibility_score(client, main_user: User, candidate: User):
                 "Permanent API error for candidate %s, not retrying: %s: %s",
                 candidate_id, type(e).__name__, e
             )
-            return None
+            return None, None
 
         except (groq.APIConnectionError, groq.APITimeoutError,
                 groq.RateLimitError, groq.InternalServerError) as e:
@@ -178,25 +187,25 @@ def get_compatibility_score(client, main_user: User, candidate: User):
                 "API status error %s for candidate %s: %s",
                 getattr(e, "status_code", "?"), candidate_id, e
             )
-            return None
+            return None, None
 
         except groq.GroqError as e:
             logger.error(
                 "Groq SDK error for candidate %s: %s: %s",
                 candidate_id, type(e).__name__, e
             )
-            return None
+            return None, None
 
         except Exception:
             logger.exception("Unexpected error scoring candidate %s", candidate_id)
-            return None
+            return None, None
 
         # Wait before the next attempt (1s, 2s, ...)
         if attempt < max_attempts:
             time.sleep(2 ** (attempt - 1))
 
     logger.error("Giving up on candidate %s after %d attempts", candidate_id, max_attempts)
-    return None
+    return None, None
 
 if __name__ == "__main__":
     a = User(student_id="1", name="Alex", age=21, gender="M", course="CS",

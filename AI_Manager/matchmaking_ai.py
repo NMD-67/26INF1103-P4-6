@@ -1,5 +1,4 @@
 
-import asyncio
 import json
 import logging
 import os
@@ -216,85 +215,130 @@ class ConnectionSuggestionService:
                 return details
         raise TypeError(f'Unsupported user type: {type(user).__name__}')
 
-    def prepare_connection(self, profile_a, profile_b) -> dict:
-        a, b = self._profile_dict(profile_a), self._profile_dict(profile_b)
-        result = self._ai_manager.generate_suggestions(a, b)
-        result.update(
-            user_a=str(a['student_id']), user_b=str(b['student_id']),
-            user_a_info={field: a.get(field) for field in CONTACT_FIELDS},
-            user_b_info={field: b.get(field) for field in CONTACT_FIELDS},
-        )
-        return result
 
     def get_matches_for_user(self, user_id: str) -> list[dict]:
+        """Generate suggestions for mutual Match objects and populate ai_suggestions.
+
+        Continue returning dictionaries for the existing ConsoleIO display.
+        """
         user_id = str(user_id).strip()
-        # The team's MatchService obtains confirmed reciprocal acceptances.
-        # Candidate recommendations alone are not mutual connections.
+
         try:
-            if not callable(getattr(self._match_service, 'get_mutual_connections', None)):
-                raise RuntimeError('Mutual connection retrieval is unavailable')
-            match_result = self._match_service.get_mutual_connections(user_id)
+            match_result = self._match_service.get_all_matches(user_id)
             if not match_result.success:
-                raise RuntimeError('Could not retrieve mutual connections')
-            if not isinstance(match_result.data, (list, tuple)):
-                raise RuntimeError('Unexpected connection format')
+                raise RuntimeError('Could not retrieve mutual matches')
+            matches = match_result.data
+            if not isinstance(matches, (list, tuple)):
+                raise TypeError('Unexpected matches format')
         except Exception as error:
-            logger.warning('Unable to retrieve mutual connections: %s', type(error).__name__)
+            logger.warning('Unable to retrieve mutual matches: %s', type(error).__name__)
             return [{'success': False, 'user_a': user_id,
                      'error': 'Connections are temporarily unavailable.'}]
-        ids = list(dict.fromkeys(str(value).strip() for value in match_result.data
-                                 if value is not None and str(value).strip()))
-        if not ids:
+
+        if not matches:
             return []
-        # Load the requesting student once. A failure should be reported for
-        # each connection without preventing unrelated matches being listed.
+
         try:
-            first = self._user_service.get_user(user_id)
+            viewer_result = self._user_service.get_user(user_id)
         except Exception as error:
-            logger.warning('Unable to load requesting user: %s', type(error).__name__)
-            first = None
+            logger.warning('Unable to load viewing user: %s', type(error).__name__)
+            viewer_result = None
+
         output = []
-        for other_id in ids:
-            if other_id == user_id:
+        seen_ids = set()
+        for match in matches:
+            other_id = str(match.student_id).strip()
+            if not other_id or other_id == user_id or other_id in seen_ids:
                 continue
-            if first is None or not first.success or first.data is None:
+            seen_ids.add(other_id)
+
+            if viewer_result is None or not viewer_result.success or viewer_result.data is None:
                 output.append({'success': False, 'user_a': user_id,
                                'user_b': other_id, 'error': 'Your profile is unavailable'})
                 continue
+
             try:
-                second = self._user_service.get_user(other_id)
-                if not second.success or second.data is None:
-                    raise ValueError('Profile unavailable')
-                result = self.prepare_connection(first.data, second.data)
+                # The Match model owns ai_suggestions and delegates AI generation.
+                # This calls Groq once for this mutual connection.
+                viewing_user = viewer_result.data
+                result = match.generate_reccos(viewing_user, self._ai_manager)
+
+                # Preserve the dictionary format expected by ConsoleIO.
+                a = self._profile_dict(viewing_user)
+                b = self._profile_dict(match)
+                result.update(
+                    user_a=str(a['student_id']),
+                    user_b=str(b['student_id']),
+                    user_a_info={field: a.get(field) for field in CONTACT_FIELDS},
+                    user_b_info={field: b.get(field) for field in CONTACT_FIELDS},
+                )
             except Exception as error:
                 logger.warning('Unable to prepare connection %s: %s',
                                other_id, type(error).__name__)
+                match.ai_suggestions = []
                 result = {'success': False, 'user_a': user_id,
-                          'user_b': other_id, 'error': 'Match profile unavailable'}
+                          'user_b': other_id, 'error': 'Match suggestions unavailable'}
             output.append(result)
+
         return output
 
-    async def get_matches_for_user_async(self, user_id: str) -> list[dict]:
-        """Nonblocking adapter for callers in an async interface."""
-        return await asyncio.to_thread(self.get_matches_for_user, user_id)
 
-    @staticmethod
-    def format_recommendations(result: dict, for_user: str = 'a') -> str:
-        """Format a connection result without exposing API or persistence logic."""
-        if not result.get('success'):
-            return "Sorry, we couldn't load or generate suggestions for this connection right now."
-        other = result['user_b_info'] if for_user == 'a' else result['user_a_info']
-        lines = [f"You matched with {other.get('name') or 'someone new'}!"]
-        telegram = other.get('tele_handle') or other.get('telegram_handle')
-        if telegram:
-            lines.append(f'Telegram: {telegram}')
-        if other.get('insta_handle'):
-            lines.append(f"Instagram: {other['insta_handle']}")
-        for title, key in (
-            ('Things you have in common', 'common_interests'),
-            ('Conversation starters', 'conversation_starters'),
-            ('Outing ideas', 'outing_ideas'),
-        ):
-            lines.extend(['', f'{title}:'])
-            lines.extend(f'- {item}' for item in result[key])
-        return '\n'.join(lines)
+
+# ======================================================================
+# TESTING
+# ======================================================================
+
+if __name__ == "__main__":
+    from Data_Manager.database.connection import create_connection_pool
+    from repositories.user_repo import UserRepo
+    from repositories.matches_repo import MatchesRepo
+    from services.user_service import UserService
+    from services.match_service import MatchService
+
+    USER_ID = "2604747"  # Change to an existing student ID
+
+    pool = create_connection_pool()
+
+    try:
+        user_service = UserService(UserRepo(pool))
+        match_service = MatchService(MatchesRepo(pool))
+
+        ai_manager = MatchmakingAIManager.from_environment()
+
+        matchmaking_service = ConnectionSuggestionService(
+            match_service,
+            user_service,
+            ai_manager
+        )
+
+        results = matchmaking_service.get_matches_for_user(USER_ID)
+
+        if not results:
+            print("No mutual matches found for this student.")
+
+        for result in results:
+            print("\n" + "=" * 50)
+
+            if not result.get("success"):
+                print("Error:", result.get("error"))
+                continue
+
+            other = result["user_b_info"]
+
+            print("Matched with:", other.get("name"))
+            print("Student ID:", result["user_b"])
+
+            print("\nCOMMON INTERESTS")
+            for item in result["common_interests"]:
+                print("-", item)
+
+            print("\nCONVERSATION STARTERS")
+            for item in result["conversation_starters"]:
+                print("-", item)
+
+            print("\nOUTING IDEAS")
+            for item in result["outing_ideas"]:
+                print("-", item)
+
+    finally:
+        pool.close()

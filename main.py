@@ -25,9 +25,9 @@ def main():
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
     from AI_Manager.profile_matching_AI_copy import AIManager, GroqAIClient
     from AI_Manager.matchmaking_ai import (
-    MatchmakingAIManager,
-    ConnectionSuggestionService
-)
+        MatchmakingAIManager,
+        ConnectionSuggestionService,
+    )
 
     pool = create_connection_pool()
     client = None
@@ -42,9 +42,16 @@ def main():
         logic = ProfileLogicManager(PROFILE_FIELDS)
         console = ConsoleIO(PROFILE_FIELDS, logic)
         app = SITogetherApp(
-            users, otp, matches, scoring, matchmaking_ai, console,
-            logic, USER_FIELD_CONFIG,
-            PROFILE_FIELDS, DealBreaker,
+            users,
+            otp,
+            matches,
+            scoring,
+            matchmaking_ai,
+            console,
+            logic,
+            USER_FIELD_CONFIG,
+            PROFILE_FIELDS,
+            DealBreaker,
         )
         app.run()
     finally:

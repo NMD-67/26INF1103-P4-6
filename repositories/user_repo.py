@@ -305,12 +305,12 @@ class UserRepo:
         # 3. religion
         religions = dealbreaker.get("religion") or []
         if religions:
-            users = [u for u in users if self._overlaps(u.religion, religions)]
+            users = [u for u in users if not self._overlaps(u.religion, religions)]
 
         # 4. race
         races = dealbreaker.get("race") or []
         if races:
-            users = [u for u in users if self._overlaps(u.race, races)]
+            users = [u for u in users if not self._overlaps(u.race, races)]
 
         return users
     def test():

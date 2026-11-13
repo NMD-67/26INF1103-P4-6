@@ -62,8 +62,7 @@ class SITogetherApp:
         if preferences is not None:
             values["min_preferred_age"] = preferences.min_age
             values["max_preferred_age"] = preferences.max_age
-            # The current form is single-choice; do not silently discard a
-            # previously stored multi-selection when editing unrelated fields.
+            # Preserve all selected blacklist values when loading the form.
             values["race_preference"] = preferences.race
             values["religion_preference"] = preferences.religion
         return values
@@ -103,7 +102,7 @@ class SITogetherApp:
             race=self._preference_list(answers.get("race_preference")),
             religion=self._preference_list(answers.get("religion_preference")),
             gender=None if gender == "Both" else gender,
-        )
+        ).to_row()
         return updates
 
     def _save_profile(self, answers):

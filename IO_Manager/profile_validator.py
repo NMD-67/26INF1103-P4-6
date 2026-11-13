@@ -49,6 +49,20 @@ class ProfileValidator:
                 return option, None
         return None, f"Pick a number 1-{len(options)} or type one of the options."
 
+    def _validate_multi_choice(self, raw, field):
+        selected = []
+        for part in raw.split(","):
+            value, error = self._validate_choice(part.strip(), field)
+            if error:
+                return None, error
+            if value not in selected:
+                selected.append(value)
+        if "No preference" in selected:
+            if len(selected) > 1:
+                return None, "Choose No preference on its own, or select items to exclude."
+            return [], None
+        return selected, None
+
     def _validate_mbti(self, raw, field):
         if raw.upper() in field["options"]:
             return raw.upper(), None
@@ -123,7 +137,7 @@ class ProfileValidator:
         if not raw:
             if field["required"]:
                 return None, "This field is required."
-            if field["kind"] == "list":
+            if field["kind"] in ("list", "multi_choice"):
                 return [], None
             return None, None
 
@@ -136,6 +150,8 @@ class ProfileValidator:
             return self._validate_date(raw, field)
         elif kind == "choice":
             return self._validate_choice(raw, field)
+        elif kind == "multi_choice":
+            return self._validate_multi_choice(raw, field)
         elif kind == "mbti":
             return self._validate_mbti(raw, field)
         elif kind == "text":

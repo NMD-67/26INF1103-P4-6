@@ -26,7 +26,7 @@ class ConsoleIO:
         self._write(f"\n=== {title} ===")
 
     def _show_options(self, field):
-        if field["kind"] == "choice":
+        if field["kind"] in ("choice", "multi_choice"):
             for number, option in enumerate(field["options"], start=1):
                 self._write(f"    {number}. {option}")
 
@@ -111,6 +111,10 @@ class ConsoleIO:
         """Use friendly display text without changing the stored profile value."""
         if key == "here_for" and isinstance(value, str) and value.strip().lower() == "both":
             return "Relationships and Friends"
+        if key in ("race_preference", "religion_preference") and not value:
+            return "None"
+        if key in ("min_preferred_age", "max_preferred_age") and value is None:
+            return "No limit"
         return self._format_value(value)
 
     def _format_value(self, value):

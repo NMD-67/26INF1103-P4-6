@@ -181,6 +181,12 @@ class SITogetherApp:
             self._save_profile_with_retry(answers)
 
     def view_matches(self):
+        if not self._scoring.prepare():
+            self._io.show_error(
+                "AI matching is unavailable. Check the scoring API credentials. "
+                "You can still use the other menu options."
+            )
+            return
         self._io.show("Finding compatible profiles. Please wait...")
         eligible = self._users.filter_users_by_dealbreaker(self._student_id)
         if eligible is None:

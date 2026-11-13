@@ -261,7 +261,8 @@ class OfflineChecks(unittest.TestCase):
                     main.main()
                 run.assert_called_once()
                 pool.return_value.close.assert_called_once()
-                keys.return_value.close.assert_called_once()
+                keys.assert_not_called()
+                keys.return_value.close.assert_not_called()
                 suggestions.return_value.close.assert_called_once()
 
 

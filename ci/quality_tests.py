@@ -5,6 +5,62 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 
 class QualityChecks(unittest.TestCase):
+    def test_missing_scoring_keys_returns_to_menu(self):
+        import main
+        from IO_Manager.console_io import ConsoleIO
+        from Data_Manager.database.database_connection import DatabaseConnection
+        from AI_Manager.Suggestions_generator import SuggestionsGenerator
+        choices = iter(["1", "3", "4", "2", "6"])
+        messages = []
+        console = ConsoleIO(read=lambda prompt: next(choices), write=messages.append)
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.object(DatabaseConnection, "create_pool") as pool, \
+             patch.object(SuggestionsGenerator, "from_environment"), \
+             patch("IO_Manager.console_io.ConsoleIO", return_value=console), \
+             patch.object(main.SITogetherApp, "login", return_value=True), \
+             patch.object(main.SITogetherApp, "complete_profile", return_value=True), \
+             patch.object(main.SITogetherApp, "view_profile") as profile, \
+             patch.object(main.SITogetherApp, "update_profile") as update, \
+             patch.object(main.SITogetherApp, "view_connections") as connections, \
+             patch("AI_Manager.Profile_Matching.lazy_groq_scorer.logger.exception") as log:
+            main.main()
+        profile.assert_called_once()
+        update.assert_called_once()
+        connections.assert_called_once()
+        pool.return_value.close.assert_called_once()
+        log.assert_called_once()
+        self.assertTrue(any("scoring API credentials" in text for text in messages))
+        self.assertTrue(any("Goodbye" in text for text in messages))
+
+    def test_lazy_scorer_reuses_clients_and_delegates(self):
+        from AI_Manager.Profile_Matching.lazy_groq_scorer import LazyGroqScorer
+        from models.user import User
+        with patch("AI_Manager.Profile_Matching.lazy_groq_scorer.GroqKeyPool.from_env") as keys, \
+             patch("AI_Manager.Profile_Matching.groq_scorer.GroqScorer._call_api",
+                   return_value='{"score":80,"reason":"Shared interests"}'):
+            scorer = LazyGroqScorer()
+            keys.assert_not_called()
+            for attempt in range(2):
+                self.assertTrue(scorer.prepare())
+                result = scorer.score(User(student_id="A"), User(student_id="B"))
+                self.assertEqual(result.score, 80)
+            keys.assert_called_once()
+            scorer.close()
+            scorer.close()
+            keys.return_value.close.assert_called_once()
+
+    def test_lazy_scorer_can_retry_initialisation(self):
+        from AI_Manager.Profile_Matching.lazy_groq_scorer import LazyGroqScorer
+        pool = Mock()
+        with patch("AI_Manager.Profile_Matching.lazy_groq_scorer.GroqKeyPool.from_env",
+                   side_effect=[RuntimeError("Missing configuration"), pool]), \
+             patch("AI_Manager.Profile_Matching.lazy_groq_scorer.logger.exception"):
+            scorer = LazyGroqScorer()
+            self.assertFalse(scorer.prepare())
+            self.assertTrue(scorer.prepare())
+            scorer.close()
+            pool.close.assert_called_once()
+
     def test_connection_has_no_import_time_configuration_requirement(self):
         from Data_Manager.database.database_connection import DatabaseConnection
         with patch.dict('os.environ', {}, clear=True):

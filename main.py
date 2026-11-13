@@ -33,6 +33,7 @@ def main():
 
     pool = create_connection_pool()
     key_pool = None
+    suggestions_generator = None
     try:
         users = UserService(UserRepo(pool))
         matches = MatchService(MatchesRepo(pool))
@@ -60,10 +61,14 @@ def main():
         app.run()
     finally:
         try:
-            if key_pool is not None:
-                key_pool.close()
+            if suggestions_generator is not None:
+                suggestions_generator.close()
         finally:
-            pool.close()
+            try:
+                if key_pool is not None:
+                    key_pool.close()
+            finally:
+                pool.close()
 
 
 if __name__ == "__main__":

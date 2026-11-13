@@ -221,6 +221,22 @@ class OfflineChecks(unittest.TestCase):
             result = service.get_matches_for_user("A")[0]
         self.assertNotIn("@example", ConsoleIO().format_recommendations(result))
 
+    def test_suggestion_clients_close(self):
+        from AI_Manager.Suggestions_generator import SuggestionsGenerator
+        primary, backup = Mock(), Mock()
+        generator = SuggestionsGenerator(primary, backup)
+        generator.close()
+        primary.close.assert_called_once()
+        backup.close.assert_called_once()
+        primary.reset_mock()
+        backup.reset_mock()
+        primary.close.side_effect = RuntimeError("Close failed")
+        with patch("AI_Manager.Suggestions_generator.suggestions_generator.logger.exception") as log:
+            generator.close()
+        log.assert_called_once()
+        backup.close.assert_called_once()
+        SuggestionsGenerator(Mock()).close()
+
     def test_startup_wiring(self):
         import main
         from AI_Manager.Profile_Matching.groq_key_pool import GroqKeyPool
@@ -230,12 +246,23 @@ class OfflineChecks(unittest.TestCase):
         with ExitStack() as mocks:
             pool = mocks.enter_context(patch.object(connection, "create_connection_pool"))
             keys = mocks.enter_context(patch.object(GroqKeyPool, "from_env"))
-            mocks.enter_context(patch.object(SuggestionsGenerator, "from_environment"))
+            suggestions = mocks.enter_context(patch.object(SuggestionsGenerator, "from_environment"))
             run = mocks.enter_context(patch.object(main.SITogetherApp, "run"))
-            main.main()
-            run.assert_called_once()
-            pool.return_value.close.assert_called_once()
-            keys.return_value.close.assert_called_once()
+            for failure in (False, True):
+                run.reset_mock()
+                pool.return_value.close.reset_mock()
+                keys.return_value.close.reset_mock()
+                suggestions.return_value.close.reset_mock()
+                run.side_effect = RuntimeError("Session failed") if failure else None
+                if failure:
+                    with self.assertRaises(RuntimeError):
+                        main.main()
+                else:
+                    main.main()
+                run.assert_called_once()
+                pool.return_value.close.assert_called_once()
+                keys.return_value.close.assert_called_once()
+                suggestions.return_value.close.assert_called_once()
 
 
 if __name__ == "__main__":

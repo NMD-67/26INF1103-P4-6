@@ -24,7 +24,6 @@ class UserService:
             return Error(str(e))
 
     def update_user(self, student_id: str, fields: dict) -> Result:
-        print(f"Fields: {fields}")
         update_user_result = self.user_repo.update(student_id, fields)
         if not update_user_result:
             return Error(f"User with student_id {student_id} not found")

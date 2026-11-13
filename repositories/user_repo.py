@@ -134,7 +134,6 @@ class UserRepo:
 
                 columns = ", ".join(column for column in column_names)
                 values = list(updated_values.values())
-                print(f"column_names: {column_names}, {values}")
                 placeholders = ", ".join(["%s"] * len(values))
                 sets = ", ".join(
                     f"{column} = EXCLUDED.{column}" for column in column_names
@@ -168,9 +167,7 @@ class UserRepo:
                 return None
 
             array_tables = self._get_array_tables()
-            print(f"array tables: {array_tables}")
             for table in array_tables:
-                print(f"table: {table}")
                 column_name = USER_FIELD_CONFIG[
                     next(
                         key

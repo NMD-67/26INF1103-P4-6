@@ -57,6 +57,15 @@ class SuggestionsGenerator:
             )
         return cls(primary=primary, backup=backup)
 
+    def close(self):
+        """Release both API clients, even if closing one fails."""
+        for client in (self._primary, self._backup):
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    logger.exception("Could not close suggestion API client")
+
     def _profile_to_text(self, profile: dict) -> str:
         lines = []
         for name in self.PROFILE_FIELDS:

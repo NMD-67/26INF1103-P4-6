@@ -57,6 +57,11 @@ class MatchService:
             return Error("Could not retrieve mutual connections")
         return Success(data=matches)
 
+    def get_decided_candidate_ids(self, student_id: str) -> Result:
+        """Return IDs of candidates this student already accepted or rejected."""
+        ids = self.match_repo.get_decided_candidate_ids(student_id)
+        return Success(data=ids)
+
     def get_mutual_connections(self, student_id: str) -> Result:
         """Return mutual connection IDs for the suggestion service."""
         result = self.get_all_matches(student_id)

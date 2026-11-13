@@ -212,7 +212,6 @@ async def edit_profile_button_handler(
     context.user_data["editing_field"] = field
     context.user_data["editing_token"] = secrets.token_hex(4)
     definition = USER_PROFILE_HANDLERS[field[5:]]
-    print(f"definition: {definition}")
     lines = profile_setup.question_lines(definition)
     if profile_setup.uses_buttons(definition):
         token = context.user_data["editing_token"]

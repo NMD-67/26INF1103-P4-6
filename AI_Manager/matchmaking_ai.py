@@ -283,3 +283,62 @@ class ConnectionSuggestionService:
         return output
 
 
+
+# ======================================================================
+# TESTING
+# ======================================================================
+
+if __name__ == "__main__":
+    from Data_Manager.database.connection import create_connection_pool
+    from repositories.user_repo import UserRepo
+    from repositories.matches_repo import MatchesRepo
+    from services.user_service import UserService
+    from services.match_service import MatchService
+
+    USER_ID = "2604747"  # Change to an existing student ID
+
+    pool = create_connection_pool()
+
+    try:
+        user_service = UserService(UserRepo(pool))
+        match_service = MatchService(MatchesRepo(pool))
+
+        ai_manager = MatchmakingAIManager.from_environment()
+
+        matchmaking_service = ConnectionSuggestionService(
+            match_service,
+            user_service,
+            ai_manager
+        )
+
+        results = matchmaking_service.get_matches_for_user(USER_ID)
+
+        if not results:
+            print("No mutual matches found for this student.")
+
+        for result in results:
+            print("\n" + "=" * 50)
+
+            if not result.get("success"):
+                print("Error:", result.get("error"))
+                continue
+
+            other = result["user_b_info"]
+
+            print("Matched with:", other.get("name"))
+            print("Student ID:", result["user_b"])
+
+            print("\nCOMMON INTERESTS")
+            for item in result["common_interests"]:
+                print("-", item)
+
+            print("\nCONVERSATION STARTERS")
+            for item in result["conversation_starters"]:
+                print("-", item)
+
+            print("\nOUTING IDEAS")
+            for item in result["outing_ideas"]:
+                print("-", item)
+
+    finally:
+        pool.close()

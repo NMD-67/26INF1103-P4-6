@@ -23,21 +23,21 @@ def main():
     from config.user_fields import USER_FIELD_CONFIG, PROFILE_FIELDS
     from IO_Manager.console_io import ConsoleIO
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
-    from AI_Manager.Profile_Matching.compatibility_scorer import get_groq_client
-    from AI_Manager.Profile_Matching.ai_manager import AIManager
+    from AI_Manager.Profile_Matching.groq_key_pool import GroqKeyPool
+    from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
     from AI_Manager.matchmaking_ai import (
         MatchmakingAIManager,
         ConnectionSuggestionService,
     )
 
     pool = create_connection_pool()
-    client = None
+    key_pool = None
     try:
         users = UserService(UserRepo(pool))
         matches = MatchService(MatchesRepo(pool))
         otp = OTPService(OTPRepo(pool))
-        client = get_groq_client()
-        scoring = AIManager(client)
+        key_pool = GroqKeyPool.from_env()
+        scoring = GroqScorer(key_pool)
         ai_manager = MatchmakingAIManager.from_environment()
         matchmaking_ai = ConnectionSuggestionService(matches, users, ai_manager)
         logic = ProfileLogicManager(PROFILE_FIELDS)
@@ -57,8 +57,8 @@ def main():
         app.run()
     finally:
         try:
-            if client is not None:
-                client.close()
+            if key_pool is not None:
+                key_pool.close()
         finally:
             pool.close()
 

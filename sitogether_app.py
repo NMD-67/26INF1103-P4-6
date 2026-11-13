@@ -184,11 +184,15 @@ class SITogetherApp:
             self._io.show_error(eligible.error_msg)
             return
         user = self._load_profile()
-        scores = self._scoring.match_candidates(user, eligible.data)
-        for score in scores:
+        for candidate in eligible.data:
+            if str(candidate.student_id) == str(self._student_id):
+                continue
+            score = self._scoring.score(user, candidate)
+            if score is None:
+                continue
             result = self._matches.create_match(
-                self._student_id, score.matched_user,
-                score.compatibility_score, score.reason,
+                self._student_id, candidate.student_id,
+                score.score, score.reason,
             )
             if not result.success:
                 self._io.show_error(result.error_msg)

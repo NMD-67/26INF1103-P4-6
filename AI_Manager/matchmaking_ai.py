@@ -1,5 +1,4 @@
 
-import asyncio
 import json
 import logging
 import os
@@ -216,18 +215,9 @@ class ConnectionSuggestionService:
                 return details
         raise TypeError(f'Unsupported user type: {type(user).__name__}')
 
-    def prepare_connection(self, profile_a, profile_b) -> dict:
-        a, b = self._profile_dict(profile_a), self._profile_dict(profile_b)
-        result = self._ai_manager.generate_suggestions(a, b)
-        result.update(
-            user_a=str(a['student_id']), user_b=str(b['student_id']),
-            user_a_info={field: a.get(field) for field in CONTACT_FIELDS},
-            user_b_info={field: b.get(field) for field in CONTACT_FIELDS},
-        )
-        return result
 
     def get_matches_for_user(self, user_id: str) -> list[dict]:
-        """Generate suggestions for mutual Match objects and populate recco_list.
+        """Generate suggestions for mutual Match objects and populate ai_suggestions.
 
         Continue returning dictionaries for the existing ConsoleIO display.
         """
@@ -268,7 +258,7 @@ class ConnectionSuggestionService:
                 continue
 
             try:
-                # The Match model owns recco_list and delegates AI generation.
+                # The Match model owns ai_suggestions and delegates AI generation.
                 # This calls Groq once for this mutual connection.
                 viewing_user = viewer_result.data
                 result = match.generate_reccos(viewing_user, self._ai_manager)
@@ -285,34 +275,11 @@ class ConnectionSuggestionService:
             except Exception as error:
                 logger.warning('Unable to prepare connection %s: %s',
                                other_id, type(error).__name__)
-                match.recco_list = []
+                match.ai_suggestions = []
                 result = {'success': False, 'user_a': user_id,
                           'user_b': other_id, 'error': 'Match suggestions unavailable'}
             output.append(result)
 
         return output
 
-    async def get_matches_for_user_async(self, user_id: str) -> list[dict]:
-        """Nonblocking adapter for callers in an async interface."""
-        return await asyncio.to_thread(self.get_matches_for_user, user_id)
 
-    @staticmethod
-    def format_recommendations(result: dict, for_user: str = 'a') -> str:
-        """Format a connection result without exposing API or persistence logic."""
-        if not result.get('success'):
-            return "Sorry, we couldn't load or generate suggestions for this connection right now."
-        other = result['user_b_info'] if for_user == 'a' else result['user_a_info']
-        lines = [f"You matched with {other.get('name') or 'someone new'}!"]
-        telegram = other.get('tele_handle') or other.get('telegram_handle')
-        if telegram:
-            lines.append(f'Telegram: {telegram}')
-        if other.get('insta_handle'):
-            lines.append(f"Instagram: {other['insta_handle']}")
-        for title, key in (
-            ('Things you have in common', 'common_interests'),
-            ('Conversation starters', 'conversation_starters'),
-            ('Outing ideas', 'outing_ideas'),
-        ):
-            lines.extend(['', f'{title}:'])
-            lines.extend(f'- {item}' for item in result[key])
-        return '\n'.join(lines)

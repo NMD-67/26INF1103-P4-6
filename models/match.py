@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 class Match(User):
     """A mutually matched student's profile, including AI recommendations."""
 
-    recco_list: list[str] = field(default_factory=list)
+    ai_suggestions: list[str] = field(default_factory=list)
 
     def get_user_details(self) -> dict:
         return super().get_user_details()
@@ -32,11 +32,11 @@ class Match(User):
         )
 
         if not result.get("success"):
-            self.recco_list = []
+            self.ai_suggestions = []
             return result
 
         # The AI returns three lists; the Match model stores one list[str].
-        self.recco_list = [
+        self.ai_suggestions = [
             f"Common interest: {item}"
             for item in result["common_interests"]
         ] + [

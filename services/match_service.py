@@ -2,8 +2,9 @@ from repositories.matches_repo import MatchesRepo
 from results.error import Error
 from results.result import Result
 from results.success import Success
-
-
+from AI_Manager.Profile_Matching.groq_scorer import GroqScorer, GroqKeyPool
+from AI_Manager.Profile_Matching.supabase_user_source import SupabaseUserSource
+from AI_Manager.Profile_Matching.matching_service import MatchingService
 class MatchService:
     def __init__(self, match_repo: MatchesRepo):
         self.match_repo = match_repo
@@ -42,13 +43,27 @@ class MatchService:
             return Success("Status Updated")
         return Error("Failed to update status")
 
-    def get_next_candidate(self, student_id: str) -> Result:
+    def get_next_candidate(self, student_id: str, generated: bool = False) -> Result:
         candidate = self.match_repo.get_candidates_for_user(student_id, True)
         if len(candidate) > 0:
             return Success(data=candidate[0])
-        else:
+        elif not generated:
             # TODO: Populate candidate list (Waiting on VALERIE)
-            return Error(error_msg=f"You've run out of people :(")
+            try:
+                service = MatchingService(
+                    GroqScorer(GroqKeyPool.from_env()),
+                    SupabaseUserSource.from_env(),
+                    self,
+                )
+                results = service.recommend(student_id, limit=5)
+                if results:
+                    service.save(student_id, results)
+                    return self.get_next_candidate(student_id, True)
+            except Exception as e:
+                print(e)
+                return Error("An Error Ocurred :(")
+                    
+        return Error(error_msg=f"You've run out of people :(")
 
     def get_all_matches(self, student_id: str) -> Result:
         """Return profiles where both students accepted each other."""

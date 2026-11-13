@@ -106,6 +106,19 @@ class OfflineChecks(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 GroqScorer._parse_and_validate(raw)
 
+    def test_scoring_requires_reason(self):
+        import json
+        from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
+        for payload in ({"score": 80}, *(
+            {"score": 80, "reason": value}
+            for value in (None, "", "   ", 123, [], {})
+        )):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                GroqScorer._parse_and_validate(json.dumps(payload))
+        result = GroqScorer._parse_and_validate(
+            '{"score":80,"reason":"Shared hobby"}')
+        self.assertEqual(result.reason, "Shared hobby")
+
     def test_invalid_key_falls_back(self):
         import groq
         import httpx

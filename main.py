@@ -1,3 +1,4 @@
+
 """Configure services and start SITogether."""
 
 import logging
@@ -25,8 +26,8 @@ def main():
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
     from AI_Manager.Profile_Matching.groq_key_pool import GroqKeyPool
     from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
-    from AI_Manager.matchmaking_ai import (
-        MatchmakingAIManager,
+    from AI_Manager.Suggestions_generator import (
+        SuggestionsGenerator,
         ConnectionSuggestionService,
     )
 
@@ -38,8 +39,10 @@ def main():
         otp = OTPService(OTPRepo(pool))
         key_pool = GroqKeyPool.from_env()
         scoring = GroqScorer(key_pool)
-        ai_manager = MatchmakingAIManager.from_environment()
-        matchmaking_ai = ConnectionSuggestionService(matches, users, ai_manager)
+        suggestions_generator = SuggestionsGenerator.from_environment()
+        suggestion_service = ConnectionSuggestionService(
+            matches, users, suggestions_generator
+        )
         logic = ProfileLogicManager(PROFILE_FIELDS)
         console = ConsoleIO(PROFILE_FIELDS, logic)
         app = SITogetherApp(
@@ -47,7 +50,7 @@ def main():
             otp,
             matches,
             scoring,
-            matchmaking_ai,
+            suggestion_service,
             console,
             logic,
             USER_FIELD_CONFIG,

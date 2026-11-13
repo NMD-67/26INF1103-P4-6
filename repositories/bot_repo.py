@@ -35,3 +35,16 @@ class BotRepo:
 
             student_id = result.get("student_id")
             return student_id
+
+    def remove_bot(self, bot_id: str) -> bool:
+        with self.pool.connection() as conn:
+            result = conn.execute(
+                """
+                DELETE FROM bot_users
+                WHERE tele_id = %s
+                RETURNING tele_id
+                """,
+                (bot_id,),
+            ).fetchone()
+
+            return result is not None

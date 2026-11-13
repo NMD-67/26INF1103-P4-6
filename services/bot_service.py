@@ -17,3 +17,9 @@ class BotService:
         if get_student_id_result is None:
             return Error("Student ID Not associated with bot")
         return Success(get_student_id_result)
+
+    def logout(self, bot_id: str) -> Result:
+        logout_result = self.bot_repo.remove_bot(bot_id=bot_id)
+        if logout_result is None:
+            return Error("Telegram ID not found")
+        return Success("Logged out")

@@ -265,6 +265,7 @@ USER_FIELD_CONFIG = {
         "key": "religion",
     },
     "min_age": {
+        "form_key": "min_preferred_age",
         "editable": True,
         "storage": None,
         "type": str,
@@ -278,6 +279,7 @@ USER_FIELD_CONFIG = {
         "key": "min_age",
     },
     "max_age": {
+        "form_key": "max_preferred_age",
         "editable": True,
         "storage": None,
         "type": str,
@@ -398,16 +400,16 @@ USER_FIELD_CONFIG = {
 
 # This is a generated view, not a second handwritten schema.
 PROFILE_FIELDS = [
-    {"key": settings.get("form_key", key), **settings}
+    {**settings, "key": settings.get("form_key", key)}
     for key, settings in USER_FIELD_CONFIG.items()
-    if not settings.get("derived", False)
+    if "question" in settings and not settings.get("derived", False)
 ]
 
 # Display derived values in the profile without adding input questions.
 PROFILE_DISPLAY_FIELDS = [
-    {"key": settings.get("form_key", key), **settings}
+    {**settings, "key": settings.get("form_key", key)}
     for key, settings in USER_FIELD_CONFIG.items()
-    if key != "birthday"
+    if "section" in settings and key != "birthday"
 ]
 
 # Do not make existing SQL queries request columns that have not been migrated yet.

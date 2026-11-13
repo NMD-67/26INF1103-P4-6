@@ -63,12 +63,19 @@ class ConnectionSuggestionService:
             if not other_id or other_id == user_id or other_id in seen_ids:
                 continue
             seen_ids.add(other_id)
+            # These profiles came from the confirmed mutual-connections query.
+            # Keep their contact details even if suggestion generation fails.
+            other = self._profile_dict(match)
+            connection_info = {
+                "user_a": user_id,
+                "user_b": other_id,
+                "user_b_info": {field: other.get(field) for field in self.CONTACT_FIELDS},
+            }
 
             if viewer_result is None or not viewer_result.success or viewer_result.data is None:
                 output.append({
                     "success": False,
-                    "user_a": user_id,
-                    "user_b": other_id,
+                    **connection_info,
                     "error": "Your profile is unavailable",
                 })
                 continue
@@ -92,8 +99,7 @@ class ConnectionSuggestionService:
                 match.ai_suggestions = []
                 result = {
                     "success": False,
-                    "user_a": user_id,
-                    "user_b": other_id,
+                    **connection_info,
                     "error": "Match suggestions unavailable",
                 }
             output.append(result)

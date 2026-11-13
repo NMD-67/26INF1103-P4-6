@@ -54,7 +54,7 @@ class UserRepo:
         #Attributes to update eg.
         "name": str,
         "hobbies": list[str],
-        "dealbreakers": DealBreakers
+        "dealbreakers": dict
         }"""
 
         if not fields:
@@ -94,10 +94,25 @@ class UserRepo:
       RETURNING student_id
     """
 
+        if not assignments and not array_fields and not class_fields:
+            return False
+        for value in class_fields.values():
+            if not isinstance(value, dict) or not value:
+                raise ValueError("Dealbreaker updates must be a non-empty dictionary.")
+            if not set(value).issubset(DEAL_BREAKER_CONFIG):
+                raise ValueError("Unknown dealbreaker field.")
+
         with self.pool.connection() as conn:
-            result = None
+            # Keep the user from being deleted while related rows are updated.
+            user = conn.execute(
+                "SELECT student_id FROM users WHERE student_id = %s FOR UPDATE",
+                (student_id,),
+            ).fetchone()
+            if user is None:
+                return False
             if assignments:
-                result = conn.execute(query, values).fetchone()
+                if conn.execute(query, values).fetchone() is None:
+                    raise RuntimeError("Profile update returned no user.")
 
             for field in array_fields:
                 # delete fields that are not in the new list
@@ -116,7 +131,7 @@ class UserRepo:
                 )
 
                 # insert new fields that are not in the old list
-                result = conn.execute(
+                conn.execute(
                     f"""
                     INSERT INTO {table_name} (student_id, {column_name})
                     SELECT %s, unnest(%s::text[])
@@ -126,10 +141,8 @@ class UserRepo:
                     (student_id, array_fields[field]),
                 )
             for field in class_fields:
-                # Check if the provided class matches config class
                 updated_values = fields[field]
                 table_name = USER_FIELD_CONFIG[field]["storage"]
-                is_list = USER_FIELD_CONFIG[field]["type"] == list
                 column_names = list(updated_values)
 
                 columns = ", ".join(column for column in column_names)
@@ -148,9 +161,12 @@ class UserRepo:
                         student_id,
                         *values,
                     ),
-                )
+                ).fetchone()
+                if result is None:
+                    raise RuntimeError("Dealbreaker update returned no user.")
 
-            return result is not None
+            # Empty/unchanged lists are successful too: the requested state is saved.
+            return True
 
     def get_user(self, student_id: str) -> User | None:
         with self.pool.connection() as conn:

@@ -50,14 +50,14 @@ class GroqScorer(CompatibilityScorer):
         while attempt <= self._max_attempts:
             try:
                 return self._parse_and_validate(self._call_api(content))
-            except groq.RateLimitError as e:
-                logger.warning("Rate limit/quota hit: %s", e)
+            except (groq.RateLimitError, groq.AuthenticationError) as e:
+                logger.warning("Scoring key unavailable: %s", type(e).__name__)
                 if self._pool.rotate():
                     continue
                 return None
             except ValueError as e:
                 logger.warning("Malformed response (%d/%d): %s", attempt, self._max_attempts, e)
-            except (groq.AuthenticationError, groq.PermissionDeniedError,
+            except (groq.PermissionDeniedError,
                     groq.BadRequestError, groq.NotFoundError,
                     groq.UnprocessableEntityError) as e:
                 logger.error("Permanent API error: %s", e)
@@ -70,11 +70,6 @@ class GroqScorer(CompatibilityScorer):
                 return None
             except Exception:
                 logger.exception("Unexpected error scoring %s", candidate.student_id)
-                return None
-            except (groq.RateLimitError, groq.AuthenticationError) as e:
-                logger.warning("Key rejected or rate limited: %s", e)
-                if self._pool.rotate():
-                    continue
                 return None
 
             if attempt < self._max_attempts:

@@ -192,15 +192,18 @@ class ConsoleIO:
             self.show(self.format_recommendations(connection))
 
     def format_recommendations(self, result: dict, for_user='a'):
-        if not result.get('success'):
-            return ("Sorry, we couldn't load or generate suggestions for your connections right now.")
-        other = result['user_b_info'] if for_user == 'a' else result['user_a_info']
+        other = result.get('user_b_info' if for_user == 'a' else 'user_a_info')
+        if other is None:
+            return "Sorry, we couldn't load your connections right now."
         lines = [f"You matched with {other.get('name') or 'someone new'}!"]
         telegram = other.get('tele_handle') or other.get('telegram_handle')
         if telegram:
             lines.append(f'Telegram: {telegram}')
         if other.get('insta_handle'):
             lines.append(f"Instagram: {other['insta_handle']}")
+        if not result.get('success'):
+            lines.extend(['', 'Suggestions are temporarily unavailable. Please try again later.'])
+            return '\n'.join(lines)
         for title, key in (
             ('Things you have in common', 'common_interests'),
             ('Conversation starters', 'conversation_starters'),

@@ -134,15 +134,22 @@ class SITogetherApp:
         self._io.show_profile(answers)
         if not self._io.confirm("Save this profile?"):
             return False
+        if self._save_profile_with_retry(answers):
+            return True
+        self._io.show("Leaving SITogether without completing profile setup.")
+        return False
+
+    def _save_profile_with_retry(self, answers):
+        """Keep the same answers until saving succeeds or the user cancels."""
         while True:
             try:
                 if self._save_profile(answers):
                     return True
             except Exception:
-                logger.exception("Initial profile save failed")
+                logger.exception("Profile save failed")
                 self._io.show_error("Could not save your profile. Your answers are still available for retry.")
             if not self._io.confirm("Try saving this profile again?"):
-                self._io.show("Leaving SITogether without completing profile setup.")
+                self._io.show("Unsaved changes discarded.")
                 return False
 
     def view_profile(self):
@@ -171,7 +178,7 @@ class SITogetherApp:
             if missing:
                 answers.update(self._io.collect_missing(missing))
         if changed and self._io.confirm("Save these changes?"):
-            self._save_profile(answers)
+            self._save_profile_with_retry(answers)
 
     def view_matches(self):
         self._io.show("Finding compatible profiles. Please wait...")
@@ -182,10 +189,20 @@ class SITogetherApp:
         if not eligible.success:
             self._io.show_error(eligible.error_msg)
             return
+        decisions = self._matches.get_decided_candidate_ids(self._student_id)
+        if not decisions.success:
+            self._io.show_error(decisions.error_msg)
+            return
+        excluded_ids = {str(value) for value in decisions.data}
+        excluded_ids.add(str(self._student_id))
+        candidates = [candidate for candidate in eligible.data
+                      if str(candidate.student_id) not in excluded_ids]
+        eligible_ids = {str(candidate.student_id) for candidate in candidates}
+        if not candidates:
+            self._io.show("No new profiles match your current preferences.")
+            return
         user = self._load_profile()
-        for candidate in eligible.data:
-            if str(candidate.student_id) == str(self._student_id):
-                continue
+        for candidate in candidates:
             score = self._scoring.score(user, candidate)
             if score is None:
                 continue
@@ -200,7 +217,12 @@ class SITogetherApp:
         if not result.success:
             self._io.show_error(result.error_msg)
             return
-        for candidate in result.data:
+        current_candidates = [candidate for candidate in result.data
+                              if str(candidate.student_id) in eligible_ids]
+        if not current_candidates:
+            self._io.show("No new profiles match your current preferences.")
+            return
+        for candidate in current_candidates:
             self._io.show_candidate(candidate)
             decision = self._io.ask_match_decision()
             if decision == "0":

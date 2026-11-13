@@ -35,7 +35,6 @@ class OTPService:
         if get_otp_result is None:
             return Error("OTP invalid")
         if str(get_otp_result) != otp:
-            print(f'given: {get_otp_result}, otp: {otp}')
             return Error("OTP Mismatch")
 
         consumed = self.otp_repo.delete_otp(student_id, expected_otp=get_otp_result)

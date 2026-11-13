@@ -54,7 +54,6 @@ for field in profile_setup.PROFILE_FIELDS:
     editable_field = field.copy()
     editable_field["label"] = io_manager.profile_label(field["key"])
     USER_PROFILE_HANDLERS[field["key"]] = editable_field
-print(f"handers: {USER_PROFILE_HANDLERS.keys()}")
 
 
 def get_tele_id(update: Update):
@@ -440,6 +439,25 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tele_id = get_tele_id(update)
+    remove_bot_result = bot_service.logout(tele_id)
+    if remove_bot_result.success:
+        return await send_msg(update, "Logged out sucessfully!")
+    else:
+        return await send_msg(update, remove_bot_result.error_msg)
+
+
+async def delete_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    student_id = bot_service.get_student_id(get_tele_id(update)).data
+
+    delete_user_result = user_service.delete_user(student_id)
+    if delete_user_result.success:
+        return await send_msg(update, "Account deleted")
+    else:
+        return await send_msg(update, delete_user_result.error_msg)
+
+
 async def configure_command_menu(application):
     """Publish the command list used by Telegram's built-in Menu button."""
     await application.bot.set_my_commands(
@@ -455,6 +473,8 @@ async def configure_command_menu(application):
             BotCommand("start", "Show the welcome message"),
             BotCommand("find_match", "View reccomended profiles"),
             BotCommand("view_matches", "View users that've matched with you!"),
+            BotCommand("logout", "Log out of your account"),
+            BotCommand("delete_account", "Delete Account"),
         ]
     )
     await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
@@ -475,6 +495,8 @@ def run_bot():
     app.add_handler(CommandHandler("cancel", profile_setup.cancel))
     app.add_handler(CommandHandler("find_match", find_match_handler))
     app.add_handler(CommandHandler("view_matches", view_matches_handler))
+    app.add_handler(CommandHandler("logout", logout))
+    app.add_handler(CommandHandler("delete_account", delete_account))
     app.add_handler(CallbackQueryHandler(profile_setup.menu_choice, pattern=r"^form:"))
     app.add_handler(CallbackQueryHandler(edit_option_handler, pattern=r"^editpick:"))
     app.add_handler(

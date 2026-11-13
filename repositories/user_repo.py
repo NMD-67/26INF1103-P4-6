@@ -1,6 +1,6 @@
 from psycopg_pool import ConnectionPool
 from psycopg.errors import UniqueViolation
-from psycopg import sql
+from psycopg import rows, sql
 from exceptions.duplicate_student_id import DuplicateStudentIdException
 from models.user import User
 from models.profile import Profile
@@ -11,7 +11,6 @@ from config.user_fields import (
     CLASS_FIELDS,
     DEAL_BREAKER_CONFIG,
 )
-
 
 class UserRepo:
     """Repository class for user-related database operations"""
@@ -233,10 +232,89 @@ class UserRepo:
 
             return result is not None
 
-    def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
+    def get_all_users(self) -> list[User]:
+        """Load every user, including their array fields, using one query per table."""
         with self.pool.connection() as conn:
-            pass
-            # TODO: Val/Raph
-            # Get list of users from db that fit the criteria
-            # Loop through the list, turn the dict instances into User instances
-            # Return the list of Users
+            rows = conn.execute("SELECT * FROM users").fetchall()
+            users = {row["student_id"]: dict(row) for row in rows}
+
+            for table in self._get_array_tables():
+                key = next(k for k, v in USER_FIELD_CONFIG.items() if v["storage"] == table)
+                column_name = USER_FIELD_CONFIG[key]["column_name"]
+
+                array_rows = conn.execute(
+                    f"SELECT student_id, {column_name} FROM {table}"
+                ).fetchall()
+
+                for item in array_rows:
+                    sid = item["student_id"]
+                    if sid in users:
+                        users[sid].setdefault(table, []).append(item[column_name])
+
+            return [
+        User.from_dict({**data, "age": (data.get("age"))})
+        for data in users.values()
+      ]
+
+    def get_dealbreaker(self, student_id: str) -> dict | None:
+        """Return the dealbreaker row for a student, or None if they haven't set any."""
+        with self.pool.connection() as conn:
+            return conn.execute(
+                """
+                SELECT *
+                FROM dealbreakers
+                WHERE student_id = %s
+                """,
+                (student_id,)
+            ).fetchone()
+
+    @staticmethod
+    def _overlaps(value, allowed: list) -> bool:
+        """True if the user's value (a single item or a list) shares anything with the allowed list."""
+        if value is None:
+            return False
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        return bool(set(values) & set(allowed))
+    
+    def get_users_by_dealbreaker(self, student_id: str) -> list[User]:
+        """Return users who satisfy the given student's dealbreakers."""
+        users = [u for u in self.get_all_users() if u.student_id != student_id]
+
+        dealbreaker = self.get_dealbreaker(student_id)
+        if not dealbreaker:
+            return users
+
+        # 1. gender
+        gender = dealbreaker.get("gender")
+        if gender:
+            users = [u for u in users if u.gender == gender]
+
+        # 2. age
+        min_age = dealbreaker.get("min_age")
+        max_age = dealbreaker.get("max_age")
+        if min_age is not None or max_age is not None:
+            def in_range(u):
+                age = u.age
+                return (
+                    age is not None
+                    and (min_age is None or age >= min_age)
+                    and (max_age is None or age <= max_age)
+                )
+            users = [u for u in users if in_range(u)]
+
+        # 3. religion
+        religions = dealbreaker.get("religion") or []
+        if religions:
+            users = [u for u in users if self._overlaps(u.religion, religions)]
+
+        # 4. race
+        races = dealbreaker.get("race") or []
+        if races:
+            users = [u for u in users if self._overlaps(u.race, races)]
+
+        return users
+    def test():
+        """Test method to verify the functionality of the UserRepo class."""
+        # Implement test cases here
+        print("Running UserRepo tests...")
+        pass

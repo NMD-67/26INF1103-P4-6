@@ -1,0 +1,30 @@
+name: SITogether CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-tests:
+    name: Build Docker and run offline tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build main application image
+        run: docker build --file Dockerfile.main --tag sitogether-ci .
+
+      - name: Run offline regression tests
+        run: docker run --rm --network none sitogether-ci python ci/offline_tests.py

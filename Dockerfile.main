@@ -22,5 +22,6 @@ COPY exceptions/ ./exceptions/
 
 COPY main.py automated_test_script.py ./
 COPY sitogether_app.py ./
+COPY ci/ ./ci/
 
 CMD ["python", "main.py"]

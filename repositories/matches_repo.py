@@ -119,7 +119,7 @@ class MatchesRepo:
                                 setattr(candidate, model_key, [])
                             getattr(candidate, model_key).append(row[column_name])
 
-        return candidate_list if candidate_list else []
+        return candidate_list if candidate_list else []   
 
     def edit_status(self, student_id: str, candidate_id: str, new_status: str) -> bool:
         """
@@ -163,6 +163,19 @@ class MatchesRepo:
                 SELECT candidate_id
                 FROM matches
                 WHERE student_id = %s AND status = 'accepted'
+                """,
+                (student_id,),
+            ).fetchall()
+        return [str(row["candidate_id"]) for row in rows]
+
+    def get_decided_candidate_ids(self, student_id: str) -> list[str]:
+        """Candidate IDs this student has already accepted or rejected."""
+        with self.pool.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT candidate_id
+                FROM matches
+                WHERE student_id = %s AND status IN ('accepted', 'rejected')
                 """,
                 (student_id,),
             ).fetchall()

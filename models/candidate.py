@@ -6,7 +6,7 @@ from models.user import User
 class Candidate(User):
   compatibility_score: int
   reason: str = None
-  interst_score: int = None
+  interest_score: int = None
   personality_score: int = None
   preferences_score: int = None
 

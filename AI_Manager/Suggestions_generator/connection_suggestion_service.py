@@ -12,6 +12,8 @@ class ConnectionSuggestionService:
     """Find mutual matches, generate their suggestions, and return UI results."""
 
     CONTACT_FIELDS = ("student_id", "name", "tele_handle", "insta_handle")
+    SCORE_FIELDS = ("compatibility_score", "interest_score", "personality_score",
+                    "preferences_score", "reason")
 
     def __init__(self, match_service, user_service, suggestions_generator: SuggestionsGenerator):
         self._match_service = match_service
@@ -69,6 +71,7 @@ class ConnectionSuggestionService:
             connection_info = {
                 "user_a": user_id,
                 "user_b": other_id,
+                "compatibility": {field: other.get(field) for field in self.SCORE_FIELDS},
                 "user_b_info": {field: other.get(field) for field in self.CONTACT_FIELDS},
             }
 
@@ -86,6 +89,7 @@ class ConnectionSuggestionService:
                 a = self._profile_dict(viewing_user)
                 b = self._profile_dict(match)
                 result.update(
+                    compatibility=connection_info["compatibility"],
                     user_a=str(a["student_id"]),
                     user_b=str(b["student_id"]),
                     user_a_info={field: a.get(field) for field in self.CONTACT_FIELDS},

@@ -12,6 +12,11 @@ class Match(User):
     """A mutually matched student's profile, including AI recommendations."""
 
     ai_suggestions: list[str] = field(default_factory=list)
+    compatibility_score: int | None = None
+    interest_score: int | None = None
+    personality_score: int | None = None
+    preferences_score: int | None = None
+    reason: str | None = None
 
     def get_user_details(self) -> dict:
         return super().get_user_details()

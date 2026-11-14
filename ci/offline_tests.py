@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from AI_Manager.Profile_Matching.category_scores import CategoryScores
+from AI_Manager.Profile_Matching.score_result import ScoreResult
 
 
 class OfflineChecks(unittest.TestCase):
@@ -96,12 +98,12 @@ class OfflineChecks(unittest.TestCase):
         from models.user import User
         from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
         from AI_Manager.Profile_Matching.fake_scorer import FakeScorer
-        raw = '{"score":80,"reason":"Shared hobby"}'
+        raw = '{"interests_lifestyle":80,"personality_values":80,"relationship_goals":80,"reason":"Shared hobby"}'
         client = Mock()
         client.chat.completions.create.return_value = NS(choices=[NS(
             finish_reason="stop", message=NS(content=raw))])
         for scorer in (GroqScorer(NS(client=client)), FakeScorer(80)):
-            self.assertEqual(scorer.score(User(student_id="A"), User(student_id="B")).score, 80)
+            self.assertEqual(scorer.score(User(student_id="A"), User(student_id="B")).categories.interests_lifestyle, 80)
         for raw in ('invalid', '[]', '{"score":true}', '{"score":101}', '{"score":-1}', '{"score":NaN}'):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 GroqScorer._parse_and_validate(raw)
@@ -109,14 +111,14 @@ class OfflineChecks(unittest.TestCase):
     def test_scoring_requires_reason(self):
         import json
         from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
-        for payload in ({"score": 80}, *(
-            {"score": 80, "reason": value}
+        for payload in ({"interests_lifestyle": 80, "personality_values": 80, "relationship_goals": 80}, *(
+            {"interests_lifestyle": 80, "personality_values": 80, "relationship_goals": 80, "reason": value}
             for value in (None, "", "   ", 123, [], {})
         )):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 GroqScorer._parse_and_validate(json.dumps(payload))
         result = GroqScorer._parse_and_validate(
-            '{"score":80,"reason":"Shared hobby"}')
+            '{"interests_lifestyle":80,"personality_values":80,"relationship_goals":80,"reason":"Shared hobby"}')
         self.assertEqual(result.reason, "Shared hobby")
 
     def test_invalid_key_falls_back(self):
@@ -131,11 +133,56 @@ class OfflineChecks(unittest.TestCase):
             error = error_type("Synthetic failure", body={}, response=httpx.Response(
                 code, request=httpx.Request("POST", "https://example.invalid")))
             scorer = GroqScorer(pool)
-            with patch.object(scorer, "_call_api", side_effect=[error, '{"score":80,"reason":"Shared hobby"}']) as call:
+            with patch.object(scorer, "_call_api", side_effect=[error, '{"interests_lifestyle":80,"personality_values":80,"relationship_goals":80,"reason":"Shared hobby"}']) as call:
                 result = scorer.score(User(student_id="A"), User(student_id="B"))
-            self.assertEqual(result.score, 80)
+            self.assertEqual(result.categories.interests_lifestyle, 80)
             self.assertEqual(call.call_count, 2)
             self.assertEqual(pool._index, 1)
+
+    def test_each_ai_category_is_validated(self):
+        import json
+        from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
+        valid = dict(interests_lifestyle=90, personality_values=60,
+                     relationship_goals=30, reason="Shared interests")
+        for key in ("interests_lifestyle", "personality_values", "relationship_goals"):
+            for invalid in (True, -1, 101, "80", None, float("nan")):
+                with self.subTest(key=key, value=invalid), self.assertRaises(ValueError):
+                    GroqScorer._parse_and_validate(json.dumps({**valid, key: invalid}))
+
+    def test_shared_recommendations_save_weighted_category_scores(self):
+        from services.recommendation_service import RecommendationService
+        users, matches, scoring = Mock(), Mock(), Mock()
+        users.filter_users_by_dealbreaker.return_value = NS(success=True, data=[NS(student_id="B")])
+        users.get_profile.return_value = NS(success=True, data=NS(student_id="A"))
+        matches.get_decided_candidate_ids.return_value = NS(success=True, data=[])
+        matches.create_match.return_value = NS(success=True)
+        matches.get_candidates_for_user.return_value = NS(success=True, data=[NS(student_id="B")])
+        scoring.score.return_value = ScoreResult(CategoryScores(90, 60, 30), "Shared interests")
+        result = RecommendationService(users, matches, scoring).get_recommendations("A")
+        self.assertTrue(result.success)
+        matches.create_match.assert_called_once_with(
+            student_id="A", candidate_id="B", compatibility_score=63,
+            interest_score=90, personality_score=60, preferences_score=30,
+            reason="Shared interests")
+
+    def test_category_scores_round_trip_and_upsert(self):
+        from models.candidate import Candidate
+        from repositories.matches_repo import MatchesRepo
+        from services.match_service import MatchService
+        candidate = Candidate.from_dict(dict(student_id="B", compatibility_score=63,
+            interest_score=90, personality_score=60, preferences_score=30))
+        self.assertEqual(candidate.interest_score, 90)
+        pool = MagicMock()
+        conn = pool.connection.return_value.__enter__.return_value
+        conn.execute.return_value.fetchone.return_value = {"student_id": "A"}
+        service = MatchService(MatchesRepo(pool), user_source=Mock())
+        self.assertTrue(service.create_match("A", "B", 63, 90, 60, 30, "Reason").success)
+        query, values = conn.execute.call_args.args
+        self.assertEqual(values, ("A", "B", 63, "Reason", 90, 60, 30))
+        update = query.split("DO UPDATE SET")[1].split("RETURNING")[0]
+        for field in ("interest_score", "personality_score", "preferences_score"):
+            self.assertIn(f"{field} = EXCLUDED.{field}", update)
+        self.assertNotIn("status =", update)
 
     def test_suggestions_schema(self):
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
@@ -163,7 +210,7 @@ class OfflineChecks(unittest.TestCase):
             data=[NS(student_id=s) for s in ("OLD", "B", "D")])
         app._load_profile = Mock(return_value=NS(student_id="A"))
         app._scoring = Mock()
-        app._scoring.score.return_value = ScoreResult(80, "Shared hobby")
+        app._scoring.score.return_value = ScoreResult(CategoryScores(80, 80, 80), "Shared hobby")
         app.view_matches()
         self.assertEqual([c.args[1].student_id for c in app._scoring.score.call_args_list], ["D"])
         self.assertEqual([c.args[0].student_id for c in app._io.show_candidate.call_args_list], ["D"])

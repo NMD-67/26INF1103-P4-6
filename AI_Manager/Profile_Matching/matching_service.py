@@ -13,21 +13,11 @@ from .score_calculator import ScoreCalculator
 class MatchingService:
     """Orchestrates: load users -> score each -> save. Depends on abstractions only."""
 
-    def __init__(self, scorer, users, match_service, calculator: ScoreCalculator | None = None):
-            self._scorer = scorer
-            self._users = users
-            self._match_service = match_service
-            self._calculator = calculator or ScoreCalculator()
-
-    def _get_decided_ids(self, student_id: str) -> set[str]:
-        """IDs this student already accepted or rejected. Empty set if the lookup fails."""
-        try:
-            result = self._match_service.get_decided_candidate_ids(str(student_id))
-            return set(result.data) if result.success else set()
-        except Exception:
-            # Safe fallback: decided rows keep their status on upsert, this only costs tokens
-            logger.exception("Could not load decided candidates for %s", student_id)
-            return set()
+    def __init__(self, scorer: CompatibilityScorer, users: UserSource, match_service, calculator: ScoreCalculator | None = None):
+        self._scorer = scorer
+        self._users = users
+        self._match_service = match_service
+        self._calculator = calculator or ScoreCalculator()
 
     def recommend(self, student_id: str, limit: int | None = None) -> dict:
         main = self._users.get_user(student_id)
@@ -55,7 +45,6 @@ class MatchingService:
         counts = {"saved": 0, "not_saved": 0, "failed": 0}
         for cid, r in results.items():
             try:
-                cat = r.categories
                 out = self._match_service.create_match(
                     student_id=student_id,
                     candidate_id=cid,

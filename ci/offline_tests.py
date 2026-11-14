@@ -491,6 +491,8 @@ class OfflineChecks(unittest.TestCase):
 
 def load_tests(loader, tests, pattern):
     # Only maintained offline checks; never discover scripts that call live services.
+    from AI_Manager.Suggestions_generator.test_user_feedback import UserFeedbackTests
+    tests.addTests(loader.loadTestsFromTestCase(UserFeedbackTests))
     from ci.quality_tests import QualityChecks
     tests.addTests(loader.loadTestsFromTestCase(QualityChecks))
     from ci.telegram_tests import TelegramChecks

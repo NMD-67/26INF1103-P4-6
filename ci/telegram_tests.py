@@ -266,6 +266,66 @@ class TelegramChecks(unittest.TestCase):
         self.assertIn('@photo', self.text())
         self.assertIn('temporarily unavailable', self.text())
 
+    def begin_suggestion_review(self):
+        result = dict(success=True, user_a="1234567", user_b="7654321",
+            user_b_info={"name": "Example", "tele_handle": "@example"},
+            compatibility={"compatibility_score": 80},
+            common_interests=["Coding"], conversation_starters=["What do you build?"],
+            outing_ideas=["Library"])
+        self.suggestions.get_matches_for_user.return_value = [result]
+        self.run_async(self.controller.connections(self.update, self.context))
+        return next(iter(self.context.user_data["suggestion_reviews"])), result
+
+    def test_regenerate_suggestions_uses_feedback_and_expires_old_buttons(self):
+        token, previous = self.begin_suggestion_review()
+        updated = {**previous, "outing_ideas": ["Park"]}
+        self.suggestions.regenerate_for_connection.return_value = updated
+        self.click(f"suggest:{token}:redo")
+        self.run_async(self.controller.text(self.update, self.context, raw="Outdoor ideas"))
+        self.suggestions.regenerate_for_connection.assert_called_once_with(
+            "1234567", "7654321", "Outdoor ideas", previous)
+        self.assertIn("Park", self.text())
+        self.assertIn("@example", self.text())
+        self.assertNotIn(token, self.context.user_data["suggestion_reviews"])
+        self.click(f"suggest:{token}:redo")
+        self.assertIn("expired", self.text())
+
+    def test_suggestion_failures_preserve_results_and_limit_attempts(self):
+        token, previous = self.begin_suggestion_review()
+        self.suggestions.regenerate_for_connection.return_value = {"success": False}
+        for attempt in range(3):
+            token = next(iter(self.context.user_data["suggestion_reviews"]))
+            self.click(f"suggest:{token}:redo")
+            self.run_async(self.controller.text(self.update, self.context, raw="Different ideas"))
+        self.assertEqual(self.suggestions.regenerate_for_connection.call_count, 3)
+        self.assertEqual(self.context.user_data["suggestion_reviews"], {})
+        self.assertIn("Regeneration limit reached", self.text())
+        self.assertIn("Library", self.text())
+        self.assertEqual(previous["outing_ideas"], ["Library"])
+
+    def test_suggestion_feedback_validation_cancel_keep_and_chat_binding(self):
+        token, previous = self.begin_suggestion_review()
+        self.update.effective_chat.id = 99
+        self.click(f"suggest:{token}:redo")
+        self.assertNotIn("suggestion_feedback", self.context.user_data)
+        self.update.effective_chat.id = 42
+        self.click(f"suggest:{token}:redo")
+        for raw in ("", "x" * 501):
+            self.run_async(self.controller.text(self.update, self.context, raw=raw))
+        self.suggestions.regenerate_for_connection.assert_not_called()
+        self.run_async(self.controller.text(self.update, self.context, raw="0"))
+        self.assertNotIn("suggestion_feedback", self.context.user_data)
+        self.click(f"suggest:{token}:keep")
+        self.assertNotIn(token, self.context.user_data["suggestion_reviews"])
+        self.suggestions.regenerate_for_connection.assert_not_called()
+
+    def test_other_user_cannot_use_suggestion_buttons(self):
+        token, previous = self.begin_suggestion_review()
+        self.bots.get_student_id.return_value = Success("9999999")
+        self.click(f"suggest:{token}:redo")
+        self.assertNotIn("suggestion_feedback", self.context.user_data)
+        self.suggestions.regenerate_for_connection.assert_not_called()
+
     def test_delete_requires_confirmation_and_authentication(self):
         self.run_async(self.controller.delete_account(self.update, self.context))
         self.users.delete_user.assert_not_called()

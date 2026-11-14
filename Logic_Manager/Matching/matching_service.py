@@ -7,8 +7,8 @@ from Data_Manager.user_source import UserSource
 
 logger = logging.getLogger(__name__)
 
-from dataclasses import replace
 from Logic_Manager.Matching.score_calculator import ScoreCalculator
+from Logic_Manager.Matching.scoring_pipeline import ScoringPipeline
 
 class MatchingService:
     """Orchestrates: load users -> score each -> save. Depends on abstractions only."""
@@ -17,7 +17,7 @@ class MatchingService:
         self._scorer = scorer
         self._users = users
         self._match_service = match_service
-        self._calculator = calculator or ScoreCalculator()
+        self._pipeline = ScoringPipeline(scorer, match_service, calculator)
 
     def recommend(self, student_id: str, limit: int | None = None) -> dict:
         main = self._users.get_user(student_id)
@@ -30,33 +30,10 @@ class MatchingService:
         excluded = {str(value) for value in decisions.data}
         excluded.add(str(student_id))
         candidates = self._users.get_candidates(student_id, exclude=excluded)
-        if limit:
+        if limit is not None:
             candidates = candidates[:limit]
 
-        results = {}
-        for c in candidates:
-            result = self._scorer.score(main, c)
-            if result is not None:
-                overall = self._calculator.overall(result.categories)
-                results[str(c.student_id)] = replace(result, overall=overall)
-        return dict(sorted(results.items(), key=lambda kv: kv[1].overall, reverse=True))
+        return self._pipeline.score_candidates(main, candidates)
 
     def save(self, student_id: str, results: dict) -> dict:
-        counts = {"saved": 0, "not_saved": 0, "failed": 0}
-        for cid, r in results.items():
-            try:
-                out = self._match_service.create_match(
-                    student_id=student_id,
-                    candidate_id=cid,
-                    compatibility_score=r.overall,
-                    interest_score=r.categories.interests_lifestyle,
-                    personality_score=r.categories.personality_values,
-                    preferences_score=r.categories.relationship_goals,
-                    reason=r.reason
-                )
-            except Exception:
-                logger.exception("create_match crashed for %s", cid)
-                counts["failed"] += 1
-                continue
-            counts["saved" if out.success else "not_saved"] += 1
-        return counts
+        return self._pipeline.save_results(student_id, results)

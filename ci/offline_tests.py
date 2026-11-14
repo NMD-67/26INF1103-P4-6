@@ -279,6 +279,67 @@ class OfflineChecks(unittest.TestCase):
         self.assertIn("Match category: Low compatibility", ConsoleIO().format_recommendations(connection))
         self.assertIn("Match category: Low compatibility", TelegramIO.connection(connection))
 
+    def test_shared_pipeline_sorts_scores_and_reports_save_failures(self):
+        from Logic_Manager.Matching.scoring_pipeline import ScoringPipeline
+        scorer, matches = Mock(), Mock()
+        scorer.score.side_effect = [ScoreResult(CategoryScores(50, 50, 50), "One"),
+                                   None, ScoreResult(CategoryScores(90, 60, 30), "Two")]
+        pipeline = ScoringPipeline(scorer, matches)
+        results = pipeline.score_candidates(NS(student_id="A"),
+            [NS(student_id=s) for s in ("B", "C", "D")])
+        self.assertEqual(list(results), ["D", "B"])
+        self.assertEqual(results["D"].overall, 63)
+        matches.create_match.side_effect = [RuntimeError("Offline"), NS(success=False)]
+        with patch("Logic_Manager.Matching.scoring_pipeline.logger.exception") as log:
+            counts = pipeline.save_results("A", results)
+        self.assertEqual(counts, dict(saved=0, not_saved=1, failed=1))
+        log.assert_called_once()
+
+    def test_recommendations_report_ai_and_save_failures(self):
+        from Logic_Manager.services.recommendation_service import RecommendationService
+        users, matches, scorer = Mock(), Mock(), Mock()
+        users.filter_users_by_dealbreaker.return_value = NS(success=True, data=[NS(student_id="B")])
+        users.get_profile.return_value = NS(success=True, data=NS(student_id="A"))
+        matches.get_decided_candidate_ids.return_value = NS(success=True, data=[])
+        service = RecommendationService(users, matches, scorer)
+        scorer.score.return_value = None
+        result = service.get_recommendations("A")
+        self.assertFalse(result.success)
+        self.assertIn("AI could not score", result.error_msg)
+        matches.create_match.assert_not_called()
+        matches.get_candidates_for_user.assert_not_called()
+        scorer.score.return_value = ScoreResult(CategoryScores(80, 80, 80), "Reason")
+        matches.create_match.return_value = NS(success=False)
+        self.assertFalse(service.get_recommendations("A").success)
+        matches.get_candidates_for_user.assert_not_called()
+
+    def test_empty_query_results_are_not_database_failures(self):
+        from Logic_Manager.services.user_service import UserService
+        from Logic_Manager.services.match_service import MatchService
+        repo = Mock()
+        repo.get_users_by_dealbreaker.return_value = []
+        repo.get_candidates_for_user.return_value = []
+        self.assertEqual(UserService(repo).filter_users_by_dealbreaker("A").data, [])
+        self.assertEqual(MatchService(repo, user_source=Mock()).get_candidates_for_user("A").data, [])
+
+    def test_inherited_model_details_include_specialised_fields(self):
+        from models.candidate import Candidate
+        from models.profile import Profile
+        from models.match import Match
+        from models.dealbreaker import DealBreaker
+        candidate = Candidate(student_id="A", compatibility_score=80, interest_score=90, reason="Reason")
+        self.assertEqual(candidate.get_user_details()["interest_score"], 90)
+        self.assertEqual(candidate.get_user_details()["reason"], "Reason")
+        preferences = DealBreaker(min_age=20)
+        self.assertIs(Profile(student_id="A", dealbreakers=preferences).get_user_details()["dealbreakers"], preferences)
+        self.assertEqual(Match(student_id="A", preferences_score=70).get_user_details()["preferences_score"], 70)
+
+    def test_birthday_is_input_only_in_repository_mapping(self):
+        from config.user_fields import SCALAR_FIELDS, REPOSITORY_FIELD_CONFIG, PROFILE_FIELDS
+        self.assertNotIn("birthday", SCALAR_FIELDS)
+        self.assertNotIn("birthday", REPOSITORY_FIELD_CONFIG)
+        self.assertIn("birthday", [f["key"] for f in PROFILE_FIELDS])
+
     def test_suggestions_schema(self):
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
         generator = SuggestionsGenerator(Mock(), sleep=lambda seconds: None)

@@ -36,15 +36,14 @@ class MatchService:
         if success:
             return Success(data={"message": "Match created successfully"})
         else:
-            return Error(error_msg="Match already exists")
+            return Error(error_msg="Could not save recommendation")
 
     def get_candidates_for_user(self, user_id: str) -> Result:
         """Retrieve candidates for a specific user."""
         candidates = self.match_repo.get_candidates_for_user(user_id)
-        if candidates:
-            return Success(data=candidates)
-        else:
-            return Error(error_msg=f"No candidates found for user with ID {user_id}")
+        if candidates is None:
+            return Error("Could not retrieve recommendations")
+        return Success(data=candidates)
 
     def handle_candidate_decision(
         self, student_id: str, candidate_id: str, accepted: bool

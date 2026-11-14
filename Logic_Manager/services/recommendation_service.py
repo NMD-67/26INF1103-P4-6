@@ -1,5 +1,5 @@
 """Shared recommendation workflow for the CLI and Telegram."""
-from Logic_Manager.Matching.score_calculator import ScoreCalculator
+from Logic_Manager.Matching.scoring_pipeline import ScoringPipeline
 from results.success import Success
 from results.error import Error
 
@@ -9,7 +9,7 @@ class RecommendationService:
         self._users = users
         self._matches = matches
         self._scoring = scoring
-        self._calculator = ScoreCalculator()
+        self._pipeline = ScoringPipeline(scoring, matches)
 
     def eligible_users(self, student_id):
         eligible = self._users.filter_users_by_dealbreaker(student_id)
@@ -33,21 +33,12 @@ class RecommendationService:
         profile = self._users.get_profile(student_id)
         if not profile.success:
             return profile
-        for candidate in eligible.data:
-            score = self._scoring.score(profile.data, candidate)
-            if score is None:
-                continue
-            result = self._matches.create_match(
-                student_id=student_id,
-                candidate_id=candidate.student_id,
-                compatibility_score=self._calculator.overall(score.categories),
-                interest_score=score.categories.interests_lifestyle,
-                personality_score=score.categories.personality_values,
-                preferences_score=score.categories.relationship_goals,
-                reason=score.reason,
-            )
-            if not result.success:
-                return result
+        scores = self._pipeline.score_candidates(profile.data, eligible.data)
+        if not scores:
+            return Error("AI could not score any eligible profiles. Please try again later.")
+        saved = self._pipeline.save_results(student_id, scores)
+        if saved["failed"] or saved["not_saved"]:
+            return Error("Some recommendations could not be saved. Please try again later.")
         stored = self._matches.get_candidates_for_user(student_id)
         if not stored.success:
             return stored

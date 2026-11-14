@@ -334,10 +334,10 @@ class OfflineChecks(unittest.TestCase):
         self.assertIs(Profile(student_id="A", dealbreakers=preferences).get_user_details()["dealbreakers"], preferences)
         self.assertEqual(Match(student_id="A", preferences_score=70).get_user_details()["preferences_score"], 70)
 
-    def test_birthday_is_input_only_in_repository_mapping(self):
+    def test_birthday_has_repository_mapping(self):
         from config.user_fields import SCALAR_FIELDS, REPOSITORY_FIELD_CONFIG, PROFILE_FIELDS
-        self.assertNotIn("birthday", SCALAR_FIELDS)
-        self.assertNotIn("birthday", REPOSITORY_FIELD_CONFIG)
+        self.assertIn("birthday", SCALAR_FIELDS)
+        self.assertIn("birthday", REPOSITORY_FIELD_CONFIG)
         self.assertIn("birthday", [f["key"] for f in PROFILE_FIELDS])
 
     def test_privacy_notice_precedes_cli_student_id(self):
@@ -491,6 +491,8 @@ class OfflineChecks(unittest.TestCase):
 
 def load_tests(loader, tests, pattern):
     # Only maintained offline checks; never discover scripts that call live services.
+    from AI_Manager.Suggestions_generator.test_user_feedback import UserFeedbackTests
+    tests.addTests(loader.loadTestsFromTestCase(UserFeedbackTests))
     from ci.quality_tests import QualityChecks
     tests.addTests(loader.loadTestsFromTestCase(QualityChecks))
     from ci.telegram_tests import TelegramChecks

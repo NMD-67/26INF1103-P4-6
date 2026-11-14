@@ -35,15 +35,31 @@ class BirthdayPrivacyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.logic.process_birthday("31/02/2005")
 
-    def test_persisted_values_do_not_include_birthday(self):
+    def test_birthday_is_saved_as_date_with_derived_values(self):
         form = ProfileForm(logic=self.logic)
         values = form.storage_values({
             "birthday": "09/11/2005",
             "name": "Student", "match_preference": "Both",
         })
-        self.assertNotIn("birthday", values)
+        self.assertEqual(values["birthday"], date(2005, 11, 9))
         self.assertEqual(values["horoscope"], "Scorpio")
         self.assertIn("age", values)
+
+    def test_stored_birthday_loads_into_edit_form(self):
+        from models.profile import Profile
+        loaded = Profile.from_dict({"student_id": "A", "birthday": date(2005, 6, 15)})
+        self.assertEqual(ProfileForm().form_values(loaded)["birthday"], "15/06/2005")
+
+    def test_birthday_is_excluded_from_both_ai_prompts(self):
+        from models.user import User
+        from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
+        from AI_Manager.Suggestions_generator import SuggestionsGenerator
+        user = User(student_id="A", birthday=date(2005, 6, 15), bio="Coding")
+        data = GroqScorer(None)._to_ai_dict(user)
+        self.assertNotIn("birthday", data)
+        prompt = SuggestionsGenerator(None)._build_prompt(user.get_user_details(), user.get_user_details())
+        self.assertNotIn("2005-06-15", prompt)
+        self.assertNotIn("birthday:", prompt)
 
     def test_existing_user_not_reprompted(self):
         form = ProfileForm(logic=self.logic)

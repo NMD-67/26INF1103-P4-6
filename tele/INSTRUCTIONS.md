@@ -87,3 +87,16 @@ The new database setup is documented in docs/database_setup.md.
 
 Demonstrate real OTP, profile save/reload, edits, decisions and mutual contacts against a
 development database. Offline tests never send messages, email or real AI requests.
+
+## Review AI suggestions
+
+Each successful connection result has Keep suggestions and Regenerate buttons.
+Regenerate asks for 1-500 characters of feedback; 0 cancels. Avoid entering contact
+or identifying information. The service rechecks mutual acceptance before requesting
+new suggestions. Failed attempts preserve the last successful result and contacts.
+Each connection review allows three submitted attempts, including failed requests.
+Opening /connections again starts a new review; this is a per-review limit, not a
+persistent API quota. Buttons are bound to the user and chat; old buttons expire
+after regeneration, keep, logout, restart or refreshing connections.
+Keep applies to the current session: suggestions/feedback are not saved to the database.
+The offline suite includes both UserFeedbackTests and Telegram review tests.

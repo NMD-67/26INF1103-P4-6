@@ -119,7 +119,7 @@ USER_FIELD_CONFIG = {
     },
     "birthday": {
         "editable": True,
-        "storage": None,
+        "storage": "users",
         "type": str,
         "question": "When is your birthday?",
         "label": "Birthday",

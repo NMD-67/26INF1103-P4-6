@@ -4,7 +4,9 @@ The application uses direct PostgreSQL connections through psycopg, not the Supa
 For a new disposable development database, run Data_Manager/database/schema.sql using
 psql or the Supabase SQL editor. It creates all nine tables, unique constraints needed by
 ON CONFLICT, and foreign keys that remove profile lists, matches in both directions and
-Telegram links when a user is deleted. Birthday is input-only and has no storage column.
+Telegram links when a user is deleted. Birthday is stored as a DATE column and remains excluded from AI prompts and match displays.
+For an existing database, run migrations/003_restore_birthday.sql before using this version.
+Verify any pre-existing birthday column is DATE; the migration does not convert its type.
 OTPs have no user FK because verification happens before account creation; expired OTPs
 are rejected and replaced on the next request.
 

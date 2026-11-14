@@ -59,8 +59,9 @@ class ProfileForm:
             if settings.get("editable", False):
                 updates[key] = value
 
-        # Birthday is used only in memory; never pass it to the repository.
+        # Send a Python date to PostgreSQL, avoiding ambiguous DD/MM/YYYY SQL text.
         if answers.get("birthday"):
+            updates["birthday"] = self._logic.parse_birthday(answers["birthday"])
             updates.update(self._logic.process_birthday(answers["birthday"]))
 
         gender = answers.get("match_preference")

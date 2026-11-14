@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -9,15 +12,16 @@ COPY src/ ./src/
 COPY tele/ ./tele/
 COPY Data_Manager/ ./Data_Manager/
 COPY AI_Manager/ ./AI_Manager/
-COPY Matching/ ./Matching/
 COPY IO_Manager/ ./IO_Manager/
 COPY config/ ./config/
 COPY Logic_Manager/ ./Logic_Manager/
-COPY main.py ./
+COPY main.py sitogether_app.py automated_test_script.py ./
+COPY ci/ ./ci/
+COPY tests/test_mutual_preference_filter.py ./tests/test_mutual_preference_filter.py
 COPY models/ ./models/
 COPY repositories/ ./repositories/
 COPY results/ ./results/
 COPY services/ ./services/
 COPY exceptions/ ./exceptions/
 
-CMD ["python", "-m" , "tele.bot"]
+CMD ["python", "main.py"]

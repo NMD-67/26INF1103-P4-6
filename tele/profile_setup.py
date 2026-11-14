@@ -1,212 +1,206 @@
-"""Telegram adapter for the shared profile form. No API calls at import time."""
+"""Stateful Telegram profile draft; persistence uses the shared UserService."""
 import asyncio
+import logging
 import secrets
+from config.user_fields import PROFILE_FIELDS
+from services.profile_form import ProfileForm
 
-from Data_Manager.database import db
-from IO_Manager import io_manager
-from Logic_Manager import logic_manager
-from IO_Manager.profile_schema import PROFILE_FIELDS
-
-STATE_KEY = "profile_setup"
+logger = logging.getLogger(__name__)
+STATE_KEY = "profile_draft"
 
 
-def uses_buttons(field):
-    if field["key"] == "course":
-        return False
-    return field["kind"] in ("choice", "mbti")
+class TelegramProfileForm:
+    def __init__(self, users, io, form=None):
+        self._users = users
+        self._io = io
+        self._form = form if form is not None else ProfileForm()
+        self._fields = {f["key"]: f for f in PROFILE_FIELDS if f["key"] != "student_id"}
 
-
-def question_lines(field):
-    lines = [field["question"]]
-    if field.get("hint"):
-        lines.append(field["hint"])
-    if field["key"] == "course":
-        for number, option in enumerate(field["options"], start=1):
-            lines.append(f"{number}. {option}")
-        lines.append(f"Reply with the course number (1-{len(field['options'])}).")
-    return lines
-
-
-def option_rows(field, prefix, width=2):
-    """Build rows containing every option."""
-    from telegram import InlineKeyboardButton
-    options = field["options"]
-    buttons = []
-    for index in range(len(options)):
-        label = io_manager.profile_value(field["key"], options[index])
-        buttons.append(InlineKeyboardButton(label, callback_data=f"{prefix}:{index}"))
-    rows = []
-    for index in range(0, len(buttons), width):
-        rows.append(buttons[index:index + width])
-    return rows
-
-
-async def reply(update, text):
-    # Large lists/long summaries must stay below Telegram's message limit.
-    for offset in range(0, len(text), 3500):
-        await update.effective_message.reply_text(text[offset:offset + 3500])
-
-
-async def student_id_for(update):
-    from Data_Manager.database.db import get_bot_user
-    user = await asyncio.to_thread(get_bot_user, update.effective_user.id)
-    if user is None:
+    def state(self, update, context, student_id):
+        state = context.user_data.get(STATE_KEY)
+        if state and state["student_id"] == str(student_id) and state["chat_id"] == update.effective_chat.id:
+            return state
         return None
-    return str(user["student_id"])
 
+    async def begin(self, update, context, student_id, editing=False):
+        if STATE_KEY in context.user_data:
+            await self._io.send(update, "A draft is already open. Use /save or /cancel in the chat where you started it.")
+            return
+        result = await asyncio.to_thread(self._users.get_profile, student_id)
+        if not result.success:
+            await self._io.send(update, result.error_msg)
+            return
+        answers = self._form.form_values(result.data)
+        answers["student_id"] = str(student_id)
+        fields = self._form.questions_for_profile(answers)
+        pending = [] if editing else [f["key"] for f in fields
+            if f["key"] != "student_id" and answers.get(f["key"]) in (None, "", [])]
+        state = {"student_id": str(student_id), "chat_id": update.effective_chat.id,
+                 "profile": answers, "pending": pending, "editing": editing,
+                 "token": secrets.token_hex(4), "field": None, "phase": "fields"}
+        context.user_data[STATE_KEY] = state
+        await self._io.send(update, "Changes stay in a draft until you confirm Save. /cancel discards them. Drafts are lost if the bot restarts.")
+        if editing:
+            await self.edit_menu(update, state)
+        else:
+            await self.next_question(update, state)
 
-async def setup(update, context):
-    try:
-        student_id = await student_id_for(update)
-    except Exception:
-        await reply(update, "Could not check your login. Please try /setup again later.")
-        return
-    if not student_id:
-        await reply(update, "Log in first using /login <student_id>, then verify your /otp.")
-        return
-    context.user_data.pop("editing_field", None)
-    # Telegram keeps a separate user_data dictionary for each person.
-    context.user_data[STATE_KEY] = {
-        "profile": {"student_id": student_id},
-        "index": 1,  # Student ID is already known, so begin with the name question.
-        "session": secrets.token_hex(4),  # Identifies buttons from this setup attempt.
-    }
-    await reply(update, "Profile setup: send one answer at a time. /skip skips optional questions; /cancel discards this draft. Saving will replace your profile fields; unrelated fields are kept.")
-    await prompt_next(update, context)
+    async def edit_menu(self, update, state):
+        state["field"] = None
+        state["phase"] = "fields"
+        buttons = [(f["label"], f"field:{state['token']}:{key}") for key, f in self._fields.items()
+                   if not self._form.should_skip(state["profile"], f)]
+        rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+        rows += [[("Review changes", f"draft:{state['token']}:review"),
+                  ("Discard", f"draft:{state['token']}:cancel")]]
+        await self._io.send(update, "Choose a field to update:", rows)
 
+    async def next_question(self, update, state):
+        while state["pending"]:
+            key = state["pending"].pop(0)
+            field = self._fields[key]
+            if not self._form.should_skip(state["profile"], field):
+                await self.prompt(update, state, key)
+                return
+        state["field"] = None
+        if state["editing"]:
+            await self.edit_menu(update, state)
+        else:
+            await self.review(update, state)
 
-def option_menu(state, field):
-    """Keep callback payloads short and tied to one draft/question."""
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    prefix = f"form:{state['session']}:{state['index']}"
-    rows = option_rows(field, f"{prefix}:pick")
-    if not field["required"]:
-        rows.append([InlineKeyboardButton("Skip", callback_data=f"{prefix}:skip:0")])
-    return InlineKeyboardMarkup(rows)
+    async def prompt(self, update, state, key):
+        field = self._fields[key]
+        state.update(field=key, phase="question", revision=secrets.token_hex(3), selected=[])
+        if field["kind"] == "multi_choice":
+            saved = state["profile"].get(key) or []
+            state["selected"] = [i for i, option in enumerate(field["options"]) if option in saved]
+        await self.question(update, state)
 
+    async def question(self, update, state):
+        field = self._fields[state["field"]]
+        lines = [field["question"]]
+        if field.get("hint"):
+            lines.append(field["hint"])
+        rows = []
+        prefix = f"answer:{state['token']}:{state['revision']}"
+        if field["key"] == "course":
+            lines.extend(f"{i}. {value}" for i, value in enumerate(field["options"], 1))
+            lines.append("Reply with the course number.")
+        elif field["kind"] in ("choice", "mbti", "multi_choice"):
+            buttons = []
+            for i, option in enumerate(field["options"]):
+                label = ("✓ " if i in state["selected"] else "") + option
+                buttons.append((label, f"{prefix}:{i}"))
+            rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+            if field["kind"] == "multi_choice":
+                lines.append("Select all that apply, then Done. You may also type comma-separated choices.")
+                rows.append([("Done", f"{prefix}:done")])
+        if not field["required"]:
+            lines.append("Optional: /skip leaves this blank.")
+            rows.append([("Skip", f"{prefix}:skip")])
+        await self._io.send(update, "\n".join(lines), rows)
 
-async def prompt_next(update, context):
-    state = context.user_data[STATE_KEY]
-    while state["index"] < len(PROFILE_FIELDS):
-        field = PROFILE_FIELDS[state["index"]]
-        if not logic_manager.should_skip_field(state["profile"], field):
-            break
-        logic_manager.clear_field(state["profile"], field)
-        state["index"] += 1
-    if state["index"] == len(PROFILE_FIELDS):
-        profile = state["profile"]
-        profile["profile_complete"] = logic_manager.is_profile_complete(profile, PROFILE_FIELDS)
-        lines = ["Review your profile:"]
-        for field in PROFILE_FIELDS:
-            key = field["key"]
-            lines.append(f"{io_manager.profile_label(key)}: {io_manager.profile_value(key, profile.get(key))}")
-        lines.append("Send /save to save, /setup to start again, or /cancel to discard.")
-        await reply(update, "\n".join(lines))
-        return
-    lines = question_lines(field)
-    if uses_buttons(field):
-        if field["key"] != "gender":
-            lines.append("Tap an option below.")
-        menu = option_menu(state, field)
-        await update.effective_message.reply_text("\n".join(lines), reply_markup=menu)
-        return
-    if not field["required"]:
-        lines.append("Optional: send /skip to leave blank.")
-    await reply(update, "\n".join(lines))
+    async def answer(self, update, state, raw):
+        if state["phase"] != "question" or not state.get("field"):
+            await self._io.send(update, "Use the current buttons or /save to review your draft.")
+            return
+        field = self._fields[state["field"]]
+        error = self._form.apply_answer(state["profile"], field, raw)
+        if error:
+            await self._io.send(update, error)
+            return
+        state["revision"] = None
+        if state["editing"]:
+            state["pending"] = [f["key"] for f in self._form.missing_fields(state["profile"])]
+        await self.next_question(update, state)
 
+    async def review(self, update, state):
+        missing = self._form.missing_fields(state["profile"])
+        if missing:
+            state["pending"] = [f["key"] for f in missing]
+            await self.next_question(update, state)
+            return
+        state.update(phase="review", field=None)
+        await self._io.send(update, self._io.profile(state["profile"]) + "\n\nSave this profile?", [
+            [("Save", f"draft:{state['token']}:save"), ("Discard", f"draft:{state['token']}:cancel")],
+            [("Edit more", f"draft:{state['token']}:edit")],
+        ])
 
-async def menu_choice(update, context):
-    """Handle choices and optional skips; reject old draft buttons."""
-    query = update.callback_query
-    state = context.user_data.get(STATE_KEY)
-    try:
-        prefix, session, index, action, selection = query.data.split(":")
-        index, selection = int(index), int(selection)
-    except (ValueError, AttributeError):
-        await query.answer("This option is unavailable.")
-        return
-    # Check the chat, then the draft, then the question. Old buttons must not
-    # answer a different question after the user has moved on.
-    unavailable = "Use the latest question, or send /setup to start again."
-    if not state:
-        await query.answer(unavailable)
-        return
-    if prefix != "form" or session != state.get("session"):
-        await query.answer(unavailable)
-        return
-    if index != state["index"] or not 0 <= index < len(PROFILE_FIELDS):
-        await query.answer(unavailable)
-        return
-    field = PROFILE_FIELDS[index]
-    options = field.get("options", [])
-    if action == "pick" and 0 <= selection < len(options):
-        raw = options[selection]
-    elif action == "skip" and not field["required"]:
-        raw = ""
-    else:
-        await query.answer("Please select a valid option.")
-        return
-    await query.answer()
-    await answer(update, context, raw=raw)
-    # The answer is already recorded; a failed visual cleanup must not undo it.
-    from telegram.error import TelegramError
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except TelegramError:
-        pass
-
-
-async def answer(update, context, raw=None):
-    state = context.user_data.get(STATE_KEY)
-    if not state:
-        await reply(update, "Use /setup to begin your profile.")
-        return
-    if state["index"] >= len(PROFILE_FIELDS):
-        await reply(update, "Your draft is ready. Send /save, /setup, or /cancel.")
-        return
-    field = PROFILE_FIELDS[state["index"]]
-    # A button supplies raw; a typed answer comes from the message text.
-    if raw is None:
-        raw = update.effective_message.text
-    value, error = io_manager.validate_field(raw, field)
-    if error:
-        await reply(update, error)
-        return
-    state["profile"][field["key"]] = value
-    state["index"] += 1
-    await prompt_next(update, context)
-
-
-async def skip(update, context):
-    await answer(update, context, raw="")
-
-
-async def cancel(update, context):
-    context.user_data.pop(STATE_KEY, None)
-    context.user_data.pop("editing_field", None)
-    await reply(update, "Draft cancelled. Previously saved profiles are unchanged.")
-
-
-async def save(update, context):
-    state = context.user_data.get(STATE_KEY)
-    if not state or state["index"] != len(PROFILE_FIELDS):
-        await reply(update, "Complete /setup before saving.")
-        return
-    try:
-        student_id = await student_id_for(update)
-    except Exception:
-        await reply(update, "Could not check your login. Your draft is kept; retry /save.")
-        return
-    if student_id != state["profile"]["student_id"]:
-        await reply(update, "Your login changed. Please log in and start /setup again.")
-        return
-    profile = state["profile"]
-    # Saving uses the network; to_thread lets the bot keep responding meanwhile.
-    result = await asyncio.to_thread(db.save_profile, profile)
-    if result["saved"]:
-        await reply(update, "Profile saved.")
+    async def save(self, update, context, state):
+        if state["phase"] != "review":
+            await self.review(update, state)
+            return False
+        error = self._form.validate_for_save(state["profile"])
+        if error:
+            await self._io.send(update, error)
+            return False
+        try:
+            values = self._form.storage_values(state["profile"])
+            result = await asyncio.to_thread(self._users.update_user, state["student_id"], values)
+            if not result.success:
+                await self._io.send(update, result.error_msg + " Your draft is kept. /save retries; /cancel discards it.")
+                return False
+        except Exception:
+            logger.exception("Telegram profile save failed")
+            await self._io.send(update, "Could not save. Your draft is kept. /save retries; /cancel discards it.")
+            return False
         context.user_data.pop(STATE_KEY, None)
-        await reply(update, "Use /profile to view your saved profile.")
-    else:
-        await reply(update, result["message"])
-        await reply(update, "Your draft is kept in this running bot. Send /save to retry. It will be lost if the bot restarts.")
+        context.user_data.pop("browse", None)
+        await self._io.send(update, "Profile saved.")
+        return True
+
+    async def callback(self, update, context, state, parts):
+        if len(parts) < 3 or parts[1] != state["token"]:
+            await self._io.send(update, "This draft menu has expired. Use the latest buttons.")
+            return False
+        if parts[0] == "field" and len(parts) == 3 and state["phase"] == "fields":
+            key = parts[2]
+            if key in self._fields and not self._form.should_skip(state["profile"], self._fields[key]):
+                await self.prompt(update, state, key)
+                return False
+        elif parts[0] == "answer" and len(parts) == 4 and state["phase"] == "question" and parts[2] == state["revision"]:
+            field = self._fields[state["field"]]
+            action = parts[3]
+            if action == "skip" and not field["required"]:
+                await self.answer(update, state, "")
+            elif action == "done" and field["kind"] == "multi_choice":
+                raw = ",".join(str(i + 1) for i in state["selected"])
+                await self.answer(update, state, raw)
+            elif action.isdecimal() and field["kind"] in ("choice", "mbti", "multi_choice"):
+                index = int(action)
+                if not 0 <= index < len(field["options"]):
+                    await self._io.send(update, "Invalid option.")
+                elif field["kind"] == "multi_choice":
+                    selected = state["selected"]
+                    if index in selected:
+                        selected.remove(index)
+                    elif field["options"][index] == "No preference":
+                        selected[:] = [index]
+                    else:
+                        selected[:] = [i for i in selected if field["options"][i] != "No preference"]
+                        selected.append(index)
+                    # Rotate the question token so the previous keyboard is stale.
+                    state["revision"] = secrets.token_hex(3)
+                    await self.question(update, state)
+                else:
+                    await self.answer(update, state, field["options"][index])
+            else:
+                await self._io.send(update, "Please use a valid option.")
+            return False
+        elif parts[0] == "draft" and len(parts) == 3:
+            action = parts[2]
+            if action == "cancel":
+                context.user_data.pop(STATE_KEY, None)
+                await self._io.send(update, "Draft discarded. Saved profile unchanged.")
+                return True
+            if action == "review":
+                await self.review(update, state)
+                return False
+            if action == "save":
+                return await self.save(update, context, state)
+            if action == "edit":
+                state["editing"] = True
+                await self.edit_menu(update, state)
+                return False
+        await self._io.send(update, "This menu is no longer active. Use the latest buttons.")
+        return False

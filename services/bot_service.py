@@ -20,6 +20,6 @@ class BotService:
 
     def logout(self, bot_id: str) -> Result:
         logout_result = self.bot_repo.remove_bot(bot_id=bot_id)
-        if logout_result is None:
+        if not logout_result:
             return Error("Telegram ID not found")
         return Success("Logged out")

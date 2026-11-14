@@ -62,6 +62,25 @@ class TelegramChecks(unittest.TestCase):
         self.click(f"field:{state['token']}:{key}")
         return state
 
+    def test_privacy_notice_precedes_id_and_command_id_is_not_processed(self):
+        from config.privacy import PRIVACY_NOTICE
+        self.bots.get_student_id.return_value = Error("Not logged in")
+        self.context.args = ["1234567"]
+        self.controller._send_otp = Mock(return_value=Success("Sent"))
+        self.run_async(self.controller.login(self.update, self.context))
+        messages = [call.args[0] for call in self.message.reply_text.call_args_list]
+        self.assertEqual(messages[0], PRIVACY_NOTICE)
+        self.assertIn("What is your student ID", messages[1])
+        self.controller._send_otp.assert_not_called()
+        self.assertTrue(self.context.user_data["awaiting_student_id"])
+        self.run_async(self.controller.text(self.update, self.context, raw="1234567"))
+        self.controller._send_otp.assert_called_once_with("1234567")
+
+    def test_bio_warning_is_shown_when_editing_in_telegram(self):
+        from config.privacy import BIO_PRIVACY_WARNING
+        self.begin_edit("bio")
+        self.assertIn(BIO_PRIVACY_WARNING, self.text())
+
     def test_bot_import_does_not_connect_to_database(self):
         with patch('Data_Manager.database.database_connection.DatabaseConnection.create_pool') as create:
             import tele.bot

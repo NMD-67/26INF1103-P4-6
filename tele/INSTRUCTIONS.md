@@ -45,7 +45,9 @@ docker run --rm --network none sitogether python ci/offline_tests.py
 ## User workflow
 
 1. Send /start then /login, enter your 7-digit student ID, and enter the email OTP.
-   `/login ID` and `/otp CODE` also work. The old `/otp ID CODE` works only when
+   Login displays the privacy notice before prompting for the ID. An ID supplied
+   with `/login ID` is not processed; enter it again after the notice. `/otp CODE`
+   works, and the old `/otp ID CODE` works only when
    the ID matches the pending login. Three incorrect attempts require a new login.
 2. Complete the profile if prompted. Choose buttons for choices/MBTI; type a
    course number and free text. For blacklist fields, select all desired values

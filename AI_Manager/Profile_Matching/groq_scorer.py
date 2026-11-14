@@ -11,7 +11,7 @@ from models.user import User
 from .compatibility_scorer import CompatibilityScorer
 from .groq_key_pool import GroqKeyPool
 from .score_result import ScoreResult
-from ...models.category_scores import CategoryScores
+from models.category_scores import CategoryScores
 
 logger = logging.getLogger(__name__)
 

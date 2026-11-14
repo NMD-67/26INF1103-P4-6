@@ -184,6 +184,52 @@ class OfflineChecks(unittest.TestCase):
             self.assertIn(f"{field} = EXCLUDED.{field}", update)
         self.assertNotIn("status =", update)
 
+    def test_scores_display_for_candidates_and_failed_connection_suggestions(self):
+        from IO_Manager.console_io import ConsoleIO
+        from tele.telegram_io import TelegramIO
+        from models.candidate import Candidate
+        from models.match import Match
+        from models.user import User
+        from AI_Manager.Suggestions_generator.connection_suggestion_service import ConnectionSuggestionService
+        scores = dict(compatibility_score=63, interest_score=90,
+                      personality_score=60, preferences_score=30, reason="Shared interests")
+        candidate = Candidate(student_id="B", **scores)
+        expected = ConsoleIO.format_compatibility(scores)
+        lines = []
+        ConsoleIO(write=lines.append).show_candidate(candidate)
+        self.assertIn(expected, "\n".join(lines))
+        self.assertIn(expected, TelegramIO.candidate(candidate))
+        matches, users, generator = Mock(), Mock(), Mock()
+        matches.get_all_matches.return_value = NS(success=True,
+            data=[Match(student_id="B", tele_handle="@example", **scores)])
+        users.get_user.return_value = NS(success=True, data=User(student_id="A"))
+        generator.generate_suggestions.return_value = {"success": False}
+        result = ConnectionSuggestionService(matches, users, generator).get_matches_for_user("A")[0]
+        self.assertEqual(result["compatibility"], scores)
+        self.assertIn(expected, ConsoleIO().format_recommendations(result))
+        self.assertIn(expected, TelegramIO.connection(result))
+        self.assertIn("@example", TelegramIO.connection(result))
+        users.get_user.return_value = NS(success=False)
+        failed = ConnectionSuggestionService(matches, users, generator).get_matches_for_user("A")[0]
+        self.assertEqual(failed["compatibility"], scores)
+        self.assertIn("Overall Compatibility: 0%", ConsoleIO.format_compatibility({"compatibility_score": 0}))
+        self.assertIn("Overall Compatibility: Not available", ConsoleIO.format_compatibility({}))
+
+    def test_connection_repository_loads_viewer_scores(self):
+        from repositories.matches_repo import MatchesRepo
+        pool = MagicMock()
+        conn = pool.connection.return_value.__enter__.return_value
+        conn.execute.return_value.fetchall.side_effect = [
+            [dict(student_id="B", compatibility_score=63, interest_score=90,
+                  personality_score=60, preferences_score=30, reason="Reason")],
+            [], [], [], []]
+        records = MatchesRepo(pool).get_matches_for_user("A")
+        self.assertEqual(records[0].interest_score, 90)
+        self.assertEqual(records[0].compatibility_score, 63)
+        query = conn.execute.call_args_list[0].args[0]
+        for field in ("compatibility_score", "interest_score", "personality_score", "preferences_score", "reason"):
+            self.assertIn("m." + field, query)
+
     def test_suggestions_schema(self):
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
         generator = SuggestionsGenerator(Mock(), sleep=lambda seconds: None)

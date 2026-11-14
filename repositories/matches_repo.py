@@ -195,7 +195,8 @@ class MatchesRepo:
         with self.pool.connection() as conn:
             matches_result = conn.execute(
                 f"""
-              SELECT {user_fields_str}
+              SELECT {user_fields_str}, m.compatibility_score, m.interest_score,
+                     m.personality_score, m.preferences_score, m.reason
               FROM matches m
               JOIN matches r ON m.student_id = r.candidate_id AND r.student_id = m.candidate_id
               JOIN users u ON u.student_id = m.candidate_id

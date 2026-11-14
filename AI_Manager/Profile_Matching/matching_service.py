@@ -1,23 +1,22 @@
 # Orchestrates loading users, scoring each candidate, and saving the results through the match service.
 
 import logging
+from dataclasses import replace
 
+from Logic_Manager.Matching.score_calculator import ScoreCalculator
 from .compatibility_scorer import CompatibilityScorer
 from .user_source import UserSource
 
 logger = logging.getLogger(__name__)
 
-from dataclasses import replace
-from ...Logic_Manager.Matching.score_calculator import ScoreCalculator
-
 class MatchingService:
     """Orchestrates: load users -> score each -> save. Depends on abstractions only."""
 
-    def __init__(self, scorer: CompatibilityScorer, users: UserSource, match_service, calculator: ScoreCalculator | None = None):
+    def __init__(self, scorer, users, match_service, calculator):
         self._scorer = scorer
         self._users = users
         self._match_service = match_service
-        self._calculator = calculator or ScoreCalculator()
+        self._calculator = calculator
 
     def recommend(self, student_id: str, limit: int | None = None) -> dict:
         main = self._users.get_user(student_id)

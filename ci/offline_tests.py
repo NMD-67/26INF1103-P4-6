@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from AI_Manager.Profile_Matching.category_scores import CategoryScores
+from models.category_scores import CategoryScores
 from AI_Manager.Profile_Matching.score_result import ScoreResult
 
 

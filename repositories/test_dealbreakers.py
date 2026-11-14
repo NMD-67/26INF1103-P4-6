@@ -5,8 +5,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool, pool
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from repositories.user_repo import UserRepo
-from services.user_service import UserService   # adjust to your real path
+from Data_Manager.repositories.user_repo import UserRepo
+from Logic_Manager.services.user_service import UserService   # adjust to your real path
 from results.success import Success
 from results.error import Error
 from dotenv import load_dotenv

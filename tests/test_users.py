@@ -1,11 +1,11 @@
-from repositories.matches_repo import MatchesRepo
-from services.match_service import MatchService
-from services.user_service import UserService
-from repositories.user_repo import UserRepo
+from Data_Manager.repositories.matches_repo import MatchesRepo
+from Logic_Manager.services.match_service import MatchService
+from Logic_Manager.services.user_service import UserService
+from Data_Manager.repositories.user_repo import UserRepo
 from models.user import User
 from Data_Manager.database.connection import create_connection_pool
 from models.dealbreaker import DealBreaker
-from repositories.otp_repo import OTPRepo
+from Data_Manager.repositories.otp_repo import OTPRepo
 
 pool = (
     create_connection_pool()

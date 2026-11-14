@@ -1,5 +1,5 @@
 """Read fully populated profiles using the shared mutual-preference filter."""
-from .user_source import UserSource
+from Data_Manager.user_source import UserSource
 
 
 class RepositoryUserSource(UserSource):

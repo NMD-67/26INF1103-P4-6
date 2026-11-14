@@ -1,7 +1,7 @@
 """Compatibility wrapper; the active OTP service uses EmailSender."""
 from pathlib import Path
 from dotenv import load_dotenv
-from src.email_sender import EmailSender
+from IO_Manager.email_sender import EmailSender
 
 
 async def send_email(to_email, subject, html_content):

@@ -19,9 +19,7 @@ COPY main.py sitogether_app.py automated_test_script.py ./
 COPY ci/ ./ci/
 COPY tests/test_mutual_preference_filter.py ./tests/test_mutual_preference_filter.py
 COPY models/ ./models/
-COPY repositories/ ./repositories/
 COPY results/ ./results/
-COPY services/ ./services/
 COPY exceptions/ ./exceptions/
 
 CMD ["python", "main.py"]

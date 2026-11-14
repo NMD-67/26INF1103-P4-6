@@ -1,9 +1,9 @@
-from repositories.otp_repo import OTPRepo
+from Data_Manager.repositories.otp_repo import OTPRepo
 from results.result import Result
 from results.error import Error
 from results.success import Success
-from services.user_service import UserService
-from src.email_sender import EmailSender
+from Logic_Manager.services.user_service import UserService
+from IO_Manager.email_sender import EmailSender
 import secrets
 
 

@@ -7,13 +7,13 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from Data_Manager.database.connection import create_connection_pool
-from repositories.matches_repo import MatchesRepo
-from services.match_service import MatchService
+from Data_Manager.repositories.matches_repo import MatchesRepo
+from Logic_Manager.services.match_service import MatchService
 from .groq_key_pool import GroqKeyPool
 from .groq_scorer import GroqScorer
-from .repository_user_source import RepositoryUserSource
-from repositories.user_repo import UserRepo
-from .matching_service import MatchingService
+from Data_Manager.repository_user_source import RepositoryUserSource
+from Data_Manager.repositories.user_repo import UserRepo
+from Logic_Manager.Matching.matching_service import MatchingService
 
 if __name__ == "__main__":
     keys = GroqKeyPool.from_env()

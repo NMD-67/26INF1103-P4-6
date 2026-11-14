@@ -2,7 +2,7 @@ from exceptions.duplicate_student_id import DuplicateStudentIdException
 from results.result import Result
 from results.success import Success
 from results.error import Error
-from repositories.user_repo import UserRepo
+from Data_Manager.repositories.user_repo import UserRepo
 from models.user import User
 from models.dealbreaker import DealBreaker
 

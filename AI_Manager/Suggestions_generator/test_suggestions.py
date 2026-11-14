@@ -1,15 +1,17 @@
 """Run from project root: py -3.14 -m AI_Manager.Suggestions_generator.test_suggestions"""
 
-from AI_Manager.Suggestions_generator import SuggestionsGenerator, ConnectionSuggestionService
+from AI_Manager.Suggestions_generator import SuggestionsGenerator
+
+from Logic_Manager.services.connection_suggestion_service import ConnectionSuggestionService
 
 
 def main():
 
     from Data_Manager.database.connection import create_connection_pool
-    from repositories.user_repo import UserRepo
-    from repositories.matches_repo import MatchesRepo
-    from services.user_service import UserService
-    from services.match_service import MatchService
+    from Data_Manager.repositories.user_repo import UserRepo
+    from Data_Manager.repositories.matches_repo import MatchesRepo
+    from Logic_Manager.services.user_service import UserService
+    from Logic_Manager.services.match_service import MatchService
 
     USER_ID = "2604747"  # Set to a student with an existing mutual match.
     pool = create_connection_pool()

@@ -14,21 +14,19 @@ logger = logging.getLogger(__name__)
 def main():
     # Import inside the startup boundary so configuration/import failures are logged.
     from Data_Manager.database.database_connection import DatabaseConnection
-    from repositories.user_repo import UserRepo
-    from repositories.otp_repo import OTPRepo
-    from repositories.matches_repo import MatchesRepo
-    from services.user_service import UserService
-    from services.otp_service import OTPService
-    from services.match_service import MatchService
+    from Data_Manager.repositories.user_repo import UserRepo
+    from Data_Manager.repositories.otp_repo import OTPRepo
+    from Data_Manager.repositories.matches_repo import MatchesRepo
+    from Logic_Manager.services.user_service import UserService
+    from Logic_Manager.services.otp_service import OTPService
+    from Logic_Manager.services.match_service import MatchService
     from models.dealbreaker import DealBreaker
     from config.user_fields import USER_FIELD_CONFIG, PROFILE_FIELDS
     from IO_Manager.console_io import ConsoleIO
     from Logic_Manager.profile_logic_manager import ProfileLogicManager
     from AI_Manager.Profile_Matching.lazy_groq_scorer import LazyGroqScorer
-    from AI_Manager.Suggestions_generator import (
-        SuggestionsGenerator,
-        ConnectionSuggestionService,
-    )
+    from AI_Manager.Suggestions_generator import SuggestionsGenerator
+    from Logic_Manager.services.connection_suggestion_service import ConnectionSuggestionService
 
     pool = DatabaseConnection().create_pool()
     scoring = None

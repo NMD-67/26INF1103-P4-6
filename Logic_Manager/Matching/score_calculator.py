@@ -1,4 +1,4 @@
-from AI_Manager.Profile_Matching.category_scores import CategoryScores
+from Logic_Manager.Matching.score_calculator import CategoryScores
 from models.category_scores import CategoryScores
 
 class ScoreCalculator:

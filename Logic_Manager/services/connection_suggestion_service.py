@@ -108,3 +108,55 @@ class ConnectionSuggestionService:
                 }
             output.append(result)
         return output
+
+    def regenerate_for_connection(
+        self, user_id: str, other_id: str, feedback: str,
+        previous_connection: dict,
+    ) -> dict:
+        """Regenerate for a verified mutual match using the student's feedback.
+
+        Keep the last good suggestions if generation fails. Do not modify
+        database records or contact permissions.
+        """
+        user_id, other_id = str(user_id).strip(), str(other_id).strip()
+        if not feedback or not isinstance(feedback, str) or not feedback.strip() or len(feedback.strip()) > 500:
+            return {"success": False, "error": "Feedback must contain 1-500 characters."}
+        if not user_id or not other_id or user_id == other_id:
+            return {"success": False, "error": "Invalid connection."}
+        if not isinstance(previous_connection, dict) or str(previous_connection.get("user_b")) != other_id or str(previous_connection.get("user_a")) != user_id or not previous_connection.get("success"):
+            return {"success": False, "error": "No valid previous suggestions for this connection."}
+        try:
+            # Recheck mutual match status; never regenerate against an arbitrary ID.
+            matches_result = self._match_service.get_all_matches(user_id)
+            if not matches_result.success or not isinstance(matches_result.data, (list, tuple)):
+                raise RuntimeError("Cannot verify mutual match")
+            matched = next(
+                (m for m in matches_result.data if str(m.student_id).strip() == other_id),
+                None,
+            )
+            if matched is None:
+                return {"success": False, "error": "This mutual match is no longer available."}
+            viewer_result = self._user_service.get_user(user_id)
+            if not viewer_result.success or viewer_result.data is None:
+                raise RuntimeError("Cannot load your profile")
+            previous = {
+                key: previous_connection.get(key, [])
+                for key in SuggestionsGenerator.OUTPUT_KEYS
+            }
+            result = self._generator.generate_suggestions(
+                self._profile_dict(viewer_result.data),
+                self._profile_dict(matched),
+                review_feedback=feedback.strip(),
+                previous_suggestions=previous,
+            )
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error", "Regeneration failed")}
+            # Preserve display information and only replace suggestion lists.
+            return {
+                **previous_connection,
+                **{key: result[key] for key in SuggestionsGenerator.OUTPUT_KEYS},
+                "success": True,
+            }
+        except Exception:
+            logger.exception("Unable to regenerate suggestions for connection %s", other_id)
+            return {"success": False, "error": "Unable to regenerate suggestions right now."}

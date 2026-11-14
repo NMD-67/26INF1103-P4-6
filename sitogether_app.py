@@ -3,7 +3,6 @@
 import asyncio
 import logging
 from IO_Manager.profile_form import ProfileForm
-from config.privacy import PRIVACY_NOTICE
 from Logic_Manager.services.recommendation_service import RecommendationService
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,6 @@ class SITogetherApp:
         self._profile_form = ProfileForm(profile_logic, field_config, profile_fields, dealbreaker_class)
 
     def login(self):
-        self._io.show(PRIVACY_NOTICE)
         student_id = self._io.ask_student_id()
         result = asyncio.run(self._otp.send_otp(student_id))
         if not result.success:
@@ -150,7 +148,36 @@ class SITogetherApp:
 
     def view_connections(self):
         connections = self._suggestions.get_matches_for_user(self._student_id)
-        self._io.show_connections(connections)
+        if not connections:
+            self._io.show_connections(connections)
+            return
+        for connection in connections:
+            self._io.show_connections([connection])
+            if not connection.get("success"):
+                continue
+            # Each user-requested regeneration is a separate Groq request.
+            # The previous successful suggestions remain visible on failure.
+            for regeneration in range(3):
+                if self._io.ask_suggestion_decision() == "1":
+                    break
+                feedback = self._io.ask_suggestion_feedback()
+                if feedback is None:
+                    break
+                new_result = self._suggestions.regenerate_for_connection(
+                    self._student_id,
+                    connection["user_b"],
+                    feedback,
+                    connection,
+                )
+                if not new_result.get("success"):
+                    self._io.show_error(
+                        "Could not regenerate suggestions. Keeping the previous suggestions."
+                    )
+                    continue
+                connection = new_result
+                self._io.show_connections([connection])
+            else:
+                self._io.show("Regeneration limit reached. Keeping the latest suggestions.")
 
     def run(self):
         self._io.show("Welcome to SITogether")

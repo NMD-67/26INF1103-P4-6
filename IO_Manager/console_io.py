@@ -232,3 +232,27 @@ class ConsoleIO:
             lines.extend(['', f'{title}:'])
             lines.extend(f'- {item}' for item in result[key])
         return '\n'.join(lines)
+
+    def ask_suggestion_decision(self):
+        """Ask whether to keep suggestions or request a new set."""
+        self.show("\nAre you happy with these suggestions?")
+        self.show("1. Yes, keep these suggestions")
+        self.show("2. No, I want different suggestions")
+        while True:
+            response = self._read("Choose 1 or 2: ").strip()
+            if response in ("1", "2"):
+                return response
+            self.show_error("Choose 1 or 2.")
+
+    def ask_suggestion_feedback(self):
+        """Collect feedback safely; 0 cancels without another AI request."""
+        while True:
+            text = self._read("What would you like to change? (0 to cancel): ").strip()
+            if text == "0":
+                return None
+            if not text:
+                self.show_error("Please explain what you would like changed.")
+            elif len(text) > 500:
+                self.show_error("Feedback must be 500 characters or fewer.")
+            else:
+                return text

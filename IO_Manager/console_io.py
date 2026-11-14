@@ -1,3 +1,4 @@
+from Logic_Manager.Matching.compatibility_classifier import CompatibilityClassifier
 """Own console interaction; delegate validation and profile rules to objects."""
 from config.user_fields import PROFILE_FIELDS, PROFILE_DISPLAY_FIELDS
 from Logic_Manager.profile_logic_manager import ProfileLogicManager
@@ -178,9 +179,27 @@ class ConsoleIO:
                 return decision
             self.show_error("Enter accept, reject, or 0.")
 
+    @staticmethod
+    def format_compatibility(scores):
+        lines = []
+        for label, key in (
+            ("Interests and Lifestyle", "interest_score"),
+            ("Personality and Values", "personality_score"),
+            ("Relationship Goals", "preferences_score"),
+            ("Overall Compatibility", "compatibility_score"),
+        ):
+            value = scores.get(key)
+            text = "Not available" if value is None else f"{value}%"
+            lines.append(f"{label}: {text}")
+        lines.append(f"Match category: {CompatibilityClassifier().classify(scores)}")
+        lines.append(f"Reason: {scores.get('reason') or 'Not available'}")
+        return "\n".join(lines)
+
     def show_candidate(self, candidate):
-        self.show(f"\nCompatibility: {candidate.compatibility_score}%")
-        self.show(f"Reason: {candidate.reason or '-'}")
+        scores = {key: getattr(candidate, key, None) for key in (
+            "interest_score", "personality_score", "preferences_score",
+            "compatibility_score", "reason")}
+        self.show("\n" + self.format_compatibility(scores))
         for key in ("name", "year", "course", "bio", "here_for", "hobbies"):
             self.show(f"{self.profile_label(key)}: "
                       f"{self.profile_value(key, getattr(candidate, key, None))}")
@@ -196,6 +215,7 @@ class ConsoleIO:
         if other is None:
             return "Sorry, we couldn't load your connections right now."
         lines = [f"You matched with {other.get('name') or 'someone new'}!"]
+        lines.append(self.format_compatibility(result.get("compatibility") or {}))
         telegram = other.get('tele_handle') or other.get('telegram_handle')
         if telegram:
             lines.append(f'Telegram: {telegram}')

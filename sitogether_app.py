@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
-from services.profile_form import ProfileForm
-from services.recommendation_service import RecommendationService
+from IO_Manager.profile_form import ProfileForm
+from Logic_Manager.services.recommendation_service import RecommendationService
 
 logger = logging.getLogger(__name__)
 

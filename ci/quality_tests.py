@@ -81,21 +81,21 @@ class QualityChecks(unittest.TestCase):
             log.assert_called_once()
 
     def test_email_timeout_and_failure_logging(self):
-        from src.email_sender import EmailSender
+        from IO_Manager.email_sender import EmailSender
         with patch.dict('os.environ', {'EMAIL_PASSWORD': 'synthetic-password'}):
-            with patch('src.email_sender.smtplib.SMTP') as smtp:
+            with patch('IO_Manager.email_sender.smtplib.SMTP') as smtp:
                 sender = EmailSender(timeout=12)
                 self.assertEqual(sender._send('student@example.invalid', 'OTP', '1234'), 200)
                 smtp.assert_called_once_with('smtp.gmail.com', 587, timeout=12)
                 smtp.return_value.__enter__.return_value.send_message.assert_called_once()
                 smtp.side_effect = TimeoutError('Sensitive diagnostic must not be printed')
-                with patch('src.email_sender.logger.error') as log:
+                with patch('IO_Manager.email_sender.logger.error') as log:
                     self.assertEqual(sender._send('student@example.invalid', 'OTP', '1234'), 500)
                 self.assertNotIn('1234', str(log.call_args))
                 self.assertNotIn('Sensitive diagnostic', str(log.call_args))
 
     def test_otp_uses_injected_email_sender(self):
-        from services.otp_service import OTPService
+        from Logic_Manager.services.otp_service import OTPService
         repo = Mock()
         repo.create_otp.return_value = True
         sender = NS(send=AsyncMock(return_value=200))
@@ -111,14 +111,14 @@ class QualityChecks(unittest.TestCase):
         self.assertFalse(completed.exception.value.success)
 
     def test_failed_account_creation_returns_error(self):
-        from services.user_service import UserService
+        from Logic_Manager.services.user_service import UserService
         repo = Mock()
         repo.get_user.return_value = None
         repo.create.return_value = None
         self.assertFalse(UserService(repo).login_user('A').success)
 
     def test_repository_source_preserves_lists_and_exclusions(self):
-        from AI_Manager.Profile_Matching.repository_user_source import RepositoryUserSource
+        from Data_Manager.repository_user_source import RepositoryUserSource
         from models.user import User
         repo = Mock()
         keep = User(student_id='C', hobbies=['Coding'])
@@ -129,8 +129,8 @@ class QualityChecks(unittest.TestCase):
         repo.get_users_by_dealbreaker.assert_called_once_with('A')
 
     def test_secondary_recommendations_exclude_decided_profiles_before_ai(self):
-        from AI_Manager.Profile_Matching.repository_user_source import RepositoryUserSource
-        from AI_Manager.Profile_Matching.matching_service import MatchingService
+        from Data_Manager.repository_user_source import RepositoryUserSource
+        from Logic_Manager.Matching.matching_service import MatchingService
         from models.user import User
         repo = Mock()
         repo.get_user.return_value = User(student_id='A')
@@ -150,8 +150,8 @@ class QualityChecks(unittest.TestCase):
         scorer.score.assert_not_called()
 
     def test_next_candidate_skips_stale_first_row(self):
-        from services.match_service import MatchService
-        from AI_Manager.Profile_Matching.repository_user_source import RepositoryUserSource
+        from Logic_Manager.services.match_service import MatchService
+        from Data_Manager.repository_user_source import RepositoryUserSource
         from models.user import User
         users = Mock()
         users.get_users_by_dealbreaker.return_value = [User(student_id='C')]
@@ -159,21 +159,21 @@ class QualityChecks(unittest.TestCase):
         repo.get_decided_candidate_ids.return_value = ['B']
         repo.get_candidates_for_user.return_value = [NS(student_id='B'), NS(student_id='C')]
         service = MatchService(repo, RepositoryUserSource(users))
-        with patch('services.match_service.GroqKeyPool.from_env') as keys:
+        with patch('Logic_Manager.services.match_service.GroqKeyPool.from_env') as keys:
             result = service.get_next_candidate('A')
         self.assertTrue(result.success)
         self.assertEqual(result.data.student_id, 'C')
         keys.assert_not_called()
 
     def test_secondary_matching_closes_keys_on_failure(self):
-        from services.match_service import MatchService
+        from Logic_Manager.services.match_service import MatchService
         repo, users = Mock(), Mock()
         repo.get_decided_candidate_ids.return_value = []
         repo.get_candidates_for_user.return_value = []
         users.get_candidates.return_value = [NS(student_id='B')]
-        with patch('services.match_service.GroqKeyPool.from_env') as keys, \
-             patch('services.match_service.MatchingService') as matching, \
-             patch('services.match_service.logger.exception') as log:
+        with patch('Logic_Manager.services.match_service.GroqKeyPool.from_env') as keys, \
+             patch('Logic_Manager.services.match_service.MatchingService') as matching, \
+             patch('Logic_Manager.services.match_service.logger.exception') as log:
             matching.return_value.recommend.side_effect = RuntimeError('Offline')
             result = MatchService(repo, users).get_next_candidate('A')
             self.assertFalse(result.success)
@@ -181,7 +181,8 @@ class QualityChecks(unittest.TestCase):
             log.assert_called_once()
 
     def test_missing_suggestion_keys_preserves_contacts(self):
-        from AI_Manager.Suggestions_generator import SuggestionsGenerator, ConnectionSuggestionService
+        from AI_Manager.Suggestions_generator import SuggestionsGenerator
+        from Logic_Manager.services.connection_suggestion_service import ConnectionSuggestionService
         from models.user import User
         from models.match import Match
         with patch.dict('os.environ', {}, clear=True), \
@@ -207,8 +208,8 @@ class QualityChecks(unittest.TestCase):
             client.return_value.close.assert_called_once()
 
     def test_real_service_honours_repository_decision_failures(self):
-        from services.match_service import MatchService
-        from repositories.matches_repo import MatchesRepo
+        from Logic_Manager.services.match_service import MatchService
+        from Data_Manager.repositories.matches_repo import MatchesRepo
         pool = MagicMock()
         conn = pool.connection.return_value.__enter__.return_value
         service = MatchService(MatchesRepo(pool), user_source=Mock())
@@ -219,8 +220,8 @@ class QualityChecks(unittest.TestCase):
         self.assertEqual(conn.execute.call_args.args[1], ('rejected', 'A', 'B'))
 
     def test_real_service_honours_repository_delete_failures(self):
-        from services.user_service import UserService
-        from repositories.user_repo import UserRepo
+        from Logic_Manager.services.user_service import UserService
+        from Data_Manager.repositories.user_repo import UserRepo
         pool = MagicMock()
         conn = pool.connection.return_value.__enter__.return_value
         service = UserService(UserRepo(pool))

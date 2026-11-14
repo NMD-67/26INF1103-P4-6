@@ -30,5 +30,5 @@ class DatabaseConnection:
             logger.exception("Error occurred while creating connection pool")
             pool.close()
             raise
-        print("Connected to Database")
+        logger.info("Connected to database")
         return pool

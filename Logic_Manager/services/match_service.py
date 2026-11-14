@@ -1,13 +1,13 @@
-from repositories.matches_repo import MatchesRepo
+from Data_Manager.repositories.matches_repo import MatchesRepo
 from results.error import Error
 from results.result import Result
 from results.success import Success
 from AI_Manager.Profile_Matching.groq_scorer import GroqScorer, GroqKeyPool
-from AI_Manager.Profile_Matching.repository_user_source import RepositoryUserSource
-from repositories.user_repo import UserRepo
+from Data_Manager.repository_user_source import RepositoryUserSource
+from Data_Manager.repositories.user_repo import UserRepo
 import logging
 
-from AI_Manager.Profile_Matching.matching_service import MatchingService
+from Logic_Manager.Matching.matching_service import MatchingService
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +36,14 @@ class MatchService:
         if success:
             return Success(data={"message": "Match created successfully"})
         else:
-            return Error(error_msg="Match already exists")
+            return Error(error_msg="Could not save recommendation")
 
     def get_candidates_for_user(self, user_id: str) -> Result:
         """Retrieve candidates for a specific user."""
         candidates = self.match_repo.get_candidates_for_user(user_id)
-        if candidates:
-            return Success(data=candidates)
-        else:
-            return Error(error_msg=f"No candidates found for user with ID {user_id}")
+        if candidates is None:
+            return Error("Could not retrieve recommendations")
+        return Success(data=candidates)
 
     def handle_candidate_decision(
         self, student_id: str, candidate_id: str, accepted: bool

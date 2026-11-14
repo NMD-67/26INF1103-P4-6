@@ -22,17 +22,18 @@ def run_bot():
     if not token:
         raise RuntimeError("TELE_API_KEY is missing")
     from Data_Manager.database.database_connection import DatabaseConnection
-    from repositories.user_repo import UserRepo
-    from repositories.otp_repo import OTPRepo
-    from repositories.bot_repo import BotRepo
-    from repositories.matches_repo import MatchesRepo
-    from services.user_service import UserService
-    from services.otp_service import OTPService
-    from services.bot_service import BotService
-    from services.match_service import MatchService
+    from Data_Manager.repositories.user_repo import UserRepo
+    from Data_Manager.repositories.otp_repo import OTPRepo
+    from Data_Manager.repositories.bot_repo import BotRepo
+    from Data_Manager.repositories.matches_repo import MatchesRepo
+    from Logic_Manager.services.user_service import UserService
+    from Logic_Manager.services.otp_service import OTPService
+    from Logic_Manager.services.bot_service import BotService
+    from Logic_Manager.services.match_service import MatchService
     from AI_Manager.Profile_Matching.lazy_groq_scorer import LazyGroqScorer
-    from AI_Manager.Suggestions_generator import SuggestionsGenerator, ConnectionSuggestionService
-    from tele.telegram_app import TelegramApp
+    from AI_Manager.Suggestions_generator import SuggestionsGenerator
+    from Logic_Manager.services.connection_suggestion_service import ConnectionSuggestionService
+    from IO_Manager.telegram.telegram_app import TelegramApp
 
     pool = DatabaseConnection().create_pool()
     scoring = LazyGroqScorer()

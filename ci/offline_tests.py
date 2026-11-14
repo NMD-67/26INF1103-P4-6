@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 class OfflineChecks(unittest.TestCase):
     def test_application_syntax(self):
-        excluded = {"tele", "tests", "Unused", "__pycache__", ".venv", "venv", ".git"}
+        excluded = {"tests", "Unused", "__pycache__", ".venv", "venv", ".git"}
         files = [p for p in ROOT.rglob("*.py")
                  if not (set(p.relative_to(ROOT).parts) & excluded)
                  and not p.name.startswith(("test", "automated_test"))]
@@ -270,6 +270,8 @@ def load_tests(loader, tests, pattern):
     # Only maintained offline checks; never discover scripts that call live services.
     from ci.quality_tests import QualityChecks
     tests.addTests(loader.loadTestsFromTestCase(QualityChecks))
+    from ci.telegram_tests import TelegramChecks
+    tests.addTests(loader.loadTestsFromTestCase(TelegramChecks))
     tests.addTests(loader.discover(str(ROOT / "tests"), pattern="test_mutual_preference_filter.py"))
     return tests
 

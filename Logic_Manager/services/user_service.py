@@ -46,8 +46,8 @@ class UserService:
         """Returns an array of users that fit the criteria for the student's deal breakers, used to feed the AI for matchmaking processing"""
         users = self.user_repo.get_users_by_dealbreaker(student_id)
 
-        if not users:
-            return Error(f"No users found matching dealbreakers for student_id {student_id}")
+        if users is None:
+            return Error("Candidate filtering is unavailable")
         return Success(users)
 
     def get_profile(self, student_id: str) -> Result:

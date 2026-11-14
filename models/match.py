@@ -18,9 +18,6 @@ class Match(User):
     preferences_score: int | None = None
     reason: str | None = None
 
-    def get_user_details(self) -> dict:
-        return super().get_user_details()
-
     def generate_reccos(
         self,
         viewing_user: User,

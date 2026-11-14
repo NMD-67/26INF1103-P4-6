@@ -69,24 +69,19 @@ Old aliases /find_match and /view_matches map to /matches and /connections.
 Drafts and callback buttons are tied to the user and chat. Restarting the bot
 loses drafts and browsing state; saved profiles and Telegram login links remain.
 
-## Shared code / teammate handoff
+## Shared implementation
 
-- services/profile_form.py owns CLI/Telegram form and storage mapping.
-- services/recommendation_service.py owns the existing CLI filtering/scoring/save
-  sequence used by both interfaces.
-- tele/telegram_app.py owns Telegram commands and login/browsing sessions.
-- tele/profile_setup.py contains TelegramProfileForm, the draft/question workflow.
-- tele/telegram_io.py reuses ConsoleIO's profile/candidate/connection formatting.
-- tele/bot.py wires services and polling; there is no old spreadsheet setup path.
+- IO_Manager/profile_form.py owns CLI/Telegram form and storage mapping.
+- Logic_Manager/services/recommendation_service.py coordinates fresh recommendations.
+- Logic_Manager/Matching/scoring_pipeline.py is the shared scoring/calculation/save implementation.
+- Logic_Manager/Matching/score_calculator.py calculates the 40/30/30 weighted overall score.
+- Logic_Manager/Matching/compatibility_classifier.py applies the multi-condition category rule.
+- IO_Manager/telegram/ contains TelegramApp, TelegramProfileForm and TelegramIO.
+- tele/bot.py wires the services and polling. Run it with python -m tele.bot.
 
-IMPORTANT: The previously deferred three-score integration is NOT implemented.
-The old score.score / score.reason save call has moved from SITogetherApp into
-RecommendationService.get_recommendations(). Coordinate that call with the new
-ScoreResult, MatchService.create_match and repository signature. Until the
-teammate's contract change is completed, generating/saving new recommendations
-can still fail in BOTH interfaces. Passing mocked Telegram tests is not proof
-that this pending integration works against the live database.
+Three AI category scores, overall score and reason are saved and displayed in both interfaces.
+The same compatibility category is shown for recommendations and mutual connections.
+The new database setup is documented in docs/database_setup.md.
 
-After that integration, demonstrate real OTP, create/save/reload, profile edits,
-match decisions and mutual contacts in Telegram against a development database.
-The current offline tests never send Telegram messages or email.
+Demonstrate real OTP, profile save/reload, edits, decisions and mutual contacts against a
+development database. Offline tests never send messages, email or real AI requests.

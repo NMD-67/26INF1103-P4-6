@@ -1,3 +1,4 @@
+from Logic_Manager.Matching.compatibility_classifier import CompatibilityClassifier
 """Own console interaction; delegate validation and profile rules to objects."""
 from config.user_fields import PROFILE_FIELDS, PROFILE_DISPLAY_FIELDS
 from Logic_Manager.profile_logic_manager import ProfileLogicManager
@@ -190,6 +191,7 @@ class ConsoleIO:
             value = scores.get(key)
             text = "Not available" if value is None else f"{value}%"
             lines.append(f"{label}: {text}")
+        lines.append(f"Match category: {CompatibilityClassifier().classify(scores)}")
         lines.append(f"Reason: {scores.get('reason') or 'Not available'}")
         return "\n".join(lines)
 

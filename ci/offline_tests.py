@@ -230,6 +230,116 @@ class OfflineChecks(unittest.TestCase):
         for field in ("compatibility_score", "interest_score", "personality_score", "preferences_score", "reason"):
             self.assertIn("m." + field, query)
 
+    def test_multicondition_classification_boundaries(self):
+        from Logic_Manager.Matching.compatibility_classifier import CompatibilityClassifier
+        rule = CompatibilityClassifier()
+        def classify(a, b, c):
+            return rule.classify(dict(interest_score=a, personality_score=b, preferences_score=c))
+        for value, expected in ((0, "Low compatibility"), (49, "Low compatibility"),
+                                (50, "Moderate compatibility"), (69, "Moderate compatibility"),
+                                (70, "Strong compatibility"), (100, "Strong compatibility")):
+            self.assertEqual(classify(value, value, value), expected)
+        # Each field independently changes the outcome even when the other two are high.
+        for values in ((69, 100, 100), (100, 69, 100), (100, 100, 69)):
+            self.assertEqual(classify(*values), "Moderate compatibility")
+        for values in ((49, 100, 100), (100, 49, 100), (100, 100, 49)):
+            self.assertEqual(classify(*values), "Low compatibility")
+
+    def test_multicondition_missing_and_invalid_scores(self):
+        from Logic_Manager.Matching.compatibility_classifier import CompatibilityClassifier
+        rule = CompatibilityClassifier()
+        self.assertEqual(rule.classify({}), "Not available")
+        for key in ("interest_score", "personality_score", "preferences_score"):
+            for value in (None, True, "80", -1, 101, float("nan"), float("inf")):
+                scores = dict(interest_score=80, personality_score=80, preferences_score=80)
+                scores[key] = value
+                self.assertEqual(rule.classify(scores), "Not available")
+
+    def test_multicondition_rule_uses_parsed_ai_and_appears_in_both_interfaces(self):
+        import json
+        from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
+        from Logic_Manager.Matching.score_calculator import ScoreCalculator
+        from models.candidate import Candidate
+        from IO_Manager.console_io import ConsoleIO
+        from IO_Manager.telegram.telegram_io import TelegramIO
+        parsed = GroqScorer._parse_and_validate(json.dumps(dict(
+            interests_lifestyle=100, personality_values=100,
+            relationship_goals=40, reason="Different goals")))
+        c = parsed.categories
+        scores = dict(compatibility_score=ScoreCalculator().overall(c),
+            interest_score=c.interests_lifestyle, personality_score=c.personality_values,
+            preferences_score=c.relationship_goals, reason=parsed.reason)
+        self.assertEqual(scores["compatibility_score"], 82)
+        candidate = Candidate(student_id="B", **scores)
+        lines = []
+        ConsoleIO(write=lines.append).show_candidate(candidate)
+        self.assertIn("Match category: Low compatibility", "\n".join(lines))
+        self.assertIn("Match category: Low compatibility", TelegramIO.candidate(candidate))
+        connection = dict(success=False, user_b_info={"name": "Example"}, compatibility=scores)
+        self.assertIn("Match category: Low compatibility", ConsoleIO().format_recommendations(connection))
+        self.assertIn("Match category: Low compatibility", TelegramIO.connection(connection))
+
+    def test_shared_pipeline_sorts_scores_and_reports_save_failures(self):
+        from Logic_Manager.Matching.scoring_pipeline import ScoringPipeline
+        scorer, matches = Mock(), Mock()
+        scorer.score.side_effect = [ScoreResult(CategoryScores(50, 50, 50), "One"),
+                                   None, ScoreResult(CategoryScores(90, 60, 30), "Two")]
+        pipeline = ScoringPipeline(scorer, matches)
+        results = pipeline.score_candidates(NS(student_id="A"),
+            [NS(student_id=s) for s in ("B", "C", "D")])
+        self.assertEqual(list(results), ["D", "B"])
+        self.assertEqual(results["D"].overall, 63)
+        matches.create_match.side_effect = [RuntimeError("Offline"), NS(success=False)]
+        with patch("Logic_Manager.Matching.scoring_pipeline.logger.exception") as log:
+            counts = pipeline.save_results("A", results)
+        self.assertEqual(counts, dict(saved=0, not_saved=1, failed=1))
+        log.assert_called_once()
+
+    def test_recommendations_report_ai_and_save_failures(self):
+        from Logic_Manager.services.recommendation_service import RecommendationService
+        users, matches, scorer = Mock(), Mock(), Mock()
+        users.filter_users_by_dealbreaker.return_value = NS(success=True, data=[NS(student_id="B")])
+        users.get_profile.return_value = NS(success=True, data=NS(student_id="A"))
+        matches.get_decided_candidate_ids.return_value = NS(success=True, data=[])
+        service = RecommendationService(users, matches, scorer)
+        scorer.score.return_value = None
+        result = service.get_recommendations("A")
+        self.assertFalse(result.success)
+        self.assertIn("AI could not score", result.error_msg)
+        matches.create_match.assert_not_called()
+        matches.get_candidates_for_user.assert_not_called()
+        scorer.score.return_value = ScoreResult(CategoryScores(80, 80, 80), "Reason")
+        matches.create_match.return_value = NS(success=False)
+        self.assertFalse(service.get_recommendations("A").success)
+        matches.get_candidates_for_user.assert_not_called()
+
+    def test_empty_query_results_are_not_database_failures(self):
+        from Logic_Manager.services.user_service import UserService
+        from Logic_Manager.services.match_service import MatchService
+        repo = Mock()
+        repo.get_users_by_dealbreaker.return_value = []
+        repo.get_candidates_for_user.return_value = []
+        self.assertEqual(UserService(repo).filter_users_by_dealbreaker("A").data, [])
+        self.assertEqual(MatchService(repo, user_source=Mock()).get_candidates_for_user("A").data, [])
+
+    def test_inherited_model_details_include_specialised_fields(self):
+        from models.candidate import Candidate
+        from models.profile import Profile
+        from models.match import Match
+        from models.dealbreaker import DealBreaker
+        candidate = Candidate(student_id="A", compatibility_score=80, interest_score=90, reason="Reason")
+        self.assertEqual(candidate.get_user_details()["interest_score"], 90)
+        self.assertEqual(candidate.get_user_details()["reason"], "Reason")
+        preferences = DealBreaker(min_age=20)
+        self.assertIs(Profile(student_id="A", dealbreakers=preferences).get_user_details()["dealbreakers"], preferences)
+        self.assertEqual(Match(student_id="A", preferences_score=70).get_user_details()["preferences_score"], 70)
+
+    def test_birthday_is_input_only_in_repository_mapping(self):
+        from config.user_fields import SCALAR_FIELDS, REPOSITORY_FIELD_CONFIG, PROFILE_FIELDS
+        self.assertNotIn("birthday", SCALAR_FIELDS)
+        self.assertNotIn("birthday", REPOSITORY_FIELD_CONFIG)
+        self.assertIn("birthday", [f["key"] for f in PROFILE_FIELDS])
+
     def test_suggestions_schema(self):
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
         generator = SuggestionsGenerator(Mock(), sleep=lambda seconds: None)

@@ -9,7 +9,3 @@ class Candidate(User):
   interest_score: int = None
   personality_score: int = None
   preferences_score: int = None
-
-  def get_user_details(self) -> dict:
-    super().get_user_details().update({"compatibility_score": self.compatibility_score, "reason": self.reason})
-    return super().get_user_details()

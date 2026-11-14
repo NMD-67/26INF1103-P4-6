@@ -1,8 +1,7 @@
 """Shared profile questions, validation settings and repository mappings.
 
-PROFILE_FIELDS is generated for the existing CLI, Telegram and Sheets code.
-storage is the PostgreSQL table, or None when that mapping is not yet configured.
-Google Sheets continues to use the form keys in PROFILE_FIELDS.
+PROFILE_FIELDS is generated for the CLI and Telegram forms.
+storage is the PostgreSQL table, or None for input-only/preference form fields.
 """
 
 SECTION_BACKGROUND = "Background Information"
@@ -119,7 +118,7 @@ USER_FIELD_CONFIG = {
     },
     "birthday": {
         "editable": True,
-        "storage": "users",
+        "storage": None,
         "type": str,
         "question": "When is your birthday?",
         "label": "Birthday",

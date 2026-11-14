@@ -230,6 +230,55 @@ class OfflineChecks(unittest.TestCase):
         for field in ("compatibility_score", "interest_score", "personality_score", "preferences_score", "reason"):
             self.assertIn("m." + field, query)
 
+    def test_multicondition_classification_boundaries(self):
+        from Logic_Manager.Matching.compatibility_classifier import CompatibilityClassifier
+        rule = CompatibilityClassifier()
+        def classify(a, b, c):
+            return rule.classify(dict(interest_score=a, personality_score=b, preferences_score=c))
+        for value, expected in ((0, "Low compatibility"), (49, "Low compatibility"),
+                                (50, "Moderate compatibility"), (69, "Moderate compatibility"),
+                                (70, "Strong compatibility"), (100, "Strong compatibility")):
+            self.assertEqual(classify(value, value, value), expected)
+        # Each field independently changes the outcome even when the other two are high.
+        for values in ((69, 100, 100), (100, 69, 100), (100, 100, 69)):
+            self.assertEqual(classify(*values), "Moderate compatibility")
+        for values in ((49, 100, 100), (100, 49, 100), (100, 100, 49)):
+            self.assertEqual(classify(*values), "Low compatibility")
+
+    def test_multicondition_missing_and_invalid_scores(self):
+        from Logic_Manager.Matching.compatibility_classifier import CompatibilityClassifier
+        rule = CompatibilityClassifier()
+        self.assertEqual(rule.classify({}), "Not available")
+        for key in ("interest_score", "personality_score", "preferences_score"):
+            for value in (None, True, "80", -1, 101, float("nan"), float("inf")):
+                scores = dict(interest_score=80, personality_score=80, preferences_score=80)
+                scores[key] = value
+                self.assertEqual(rule.classify(scores), "Not available")
+
+    def test_multicondition_rule_uses_parsed_ai_and_appears_in_both_interfaces(self):
+        import json
+        from AI_Manager.Profile_Matching.groq_scorer import GroqScorer
+        from Logic_Manager.Matching.score_calculator import ScoreCalculator
+        from models.candidate import Candidate
+        from IO_Manager.console_io import ConsoleIO
+        from IO_Manager.telegram.telegram_io import TelegramIO
+        parsed = GroqScorer._parse_and_validate(json.dumps(dict(
+            interests_lifestyle=100, personality_values=100,
+            relationship_goals=40, reason="Different goals")))
+        c = parsed.categories
+        scores = dict(compatibility_score=ScoreCalculator().overall(c),
+            interest_score=c.interests_lifestyle, personality_score=c.personality_values,
+            preferences_score=c.relationship_goals, reason=parsed.reason)
+        self.assertEqual(scores["compatibility_score"], 82)
+        candidate = Candidate(student_id="B", **scores)
+        lines = []
+        ConsoleIO(write=lines.append).show_candidate(candidate)
+        self.assertIn("Match category: Low compatibility", "\n".join(lines))
+        self.assertIn("Match category: Low compatibility", TelegramIO.candidate(candidate))
+        connection = dict(success=False, user_b_info={"name": "Example"}, compatibility=scores)
+        self.assertIn("Match category: Low compatibility", ConsoleIO().format_recommendations(connection))
+        self.assertIn("Match category: Low compatibility", TelegramIO.connection(connection))
+
     def test_suggestions_schema(self):
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
         generator = SuggestionsGenerator(Mock(), sleep=lambda seconds: None)

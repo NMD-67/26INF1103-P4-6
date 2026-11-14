@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 class OfflineChecks(unittest.TestCase):
     def test_application_syntax(self):
-        excluded = {"tele", "tests", "Unused", "__pycache__", ".venv", "venv", ".git"}
+        excluded = {"tests", "Unused", "__pycache__", ".venv", "venv", ".git"}
         files = [p for p in ROOT.rglob("*.py")
                  if not (set(p.relative_to(ROOT).parts) & excluded)
                  and not p.name.startswith(("test", "automated_test"))]
@@ -242,9 +242,9 @@ class OfflineChecks(unittest.TestCase):
         from AI_Manager.Profile_Matching.groq_key_pool import GroqKeyPool
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
         with patch.dict("os.environ", {"SUPABASE_URL": "postgresql://invalid/unused"}):
-            connection = import_module("Data_Manager.database.connection")
+            connection = import_module("Data_Manager.database.database_connection")
         with ExitStack() as mocks:
-            pool = mocks.enter_context(patch.object(connection, "create_connection_pool"))
+            pool = mocks.enter_context(patch.object(connection.DatabaseConnection, "create_pool"))
             keys = mocks.enter_context(patch.object(GroqKeyPool, "from_env"))
             suggestions = mocks.enter_context(patch.object(SuggestionsGenerator, "from_environment"))
             run = mocks.enter_context(patch.object(main.SITogetherApp, "run"))
@@ -261,8 +261,19 @@ class OfflineChecks(unittest.TestCase):
                     main.main()
                 run.assert_called_once()
                 pool.return_value.close.assert_called_once()
-                keys.return_value.close.assert_called_once()
+                keys.assert_not_called()
+                keys.return_value.close.assert_not_called()
                 suggestions.return_value.close.assert_called_once()
+
+
+def load_tests(loader, tests, pattern):
+    # Only maintained offline checks; never discover scripts that call live services.
+    from ci.quality_tests import QualityChecks
+    tests.addTests(loader.loadTestsFromTestCase(QualityChecks))
+    from ci.telegram_tests import TelegramChecks
+    tests.addTests(loader.loadTestsFromTestCase(TelegramChecks))
+    tests.addTests(loader.discover(str(ROOT / "tests"), pattern="test_mutual_preference_filter.py"))
+    return tests
 
 
 if __name__ == "__main__":

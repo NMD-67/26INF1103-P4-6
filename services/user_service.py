@@ -22,6 +22,7 @@ class UserService:
                 return Success("User Created")
         except DuplicateStudentIdException as e:
             return Error(str(e))
+        return Error("Could not create your account. Please try again.")
 
     def update_user(self, student_id: str, fields: dict) -> Result:
         update_user_result = self.user_repo.update(student_id, fields)

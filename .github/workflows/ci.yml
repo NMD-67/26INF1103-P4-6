@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   docker-tests:
-    name: Build Docker and run offline tests
+    name: Build image and test CLI and Telegram
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -23,8 +23,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build main application image
-        run: docker build --file Dockerfile.main --tag sitogether-ci .
+      - name: Build application image
+        run: docker build --tag sitogether-ci .
 
       - name: Run offline regression tests
         run: docker run --rm --network none sitogether-ci python ci/offline_tests.py

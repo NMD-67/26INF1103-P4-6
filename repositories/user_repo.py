@@ -78,7 +78,6 @@ class UserRepo:
             and USER_FIELD_CONFIG[field]["editable"]
         )
 
-        # print("Assignments:", assignments)  # Debugging statement
 
         values = [
             fields[field]
@@ -122,7 +121,6 @@ class UserRepo:
                 )  # Remove duplicates while preserving order
                 table_name = USER_FIELD_CONFIG[field]["storage"]
                 column_name = USER_FIELD_CONFIG[field]["column_name"]
-                # print(f"Deleting from {table_name} where student_id = {student_id} and {column_name} not in {array_fields[field]}")  # Debugging statement
                 conn.execute(
                     f"""
                     DELETE FROM {table_name}
@@ -204,7 +202,6 @@ class UserRepo:
                 if array_row:
                     row[table] = [item[column_name] for item in array_row]
 
-            # print(f"Retrieved user details: {row}")  # Debugging statement
 
             return User.from_dict(dict(row))
 
@@ -322,9 +319,3 @@ class UserRepo:
                 preferences_by_id.get(str(candidate.student_id)),
             )
         ]
-
-    def test():
-        """Test method to verify the functionality of the UserRepo class."""
-        # Implement test cases here
-        print("Running UserRepo tests...")
-        pass

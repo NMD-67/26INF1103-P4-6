@@ -3,13 +3,14 @@ from results.result import Result
 from results.error import Error
 from results.success import Success
 from services.user_service import UserService
-from src.email import send_email
+from src.email_sender import EmailSender
 import secrets
 
 
 class OTPService:
-    def __init__(self, otp_repo: OTPRepo):
+    def __init__(self, otp_repo: OTPRepo, email_sender=None):
         self.otp_repo = otp_repo
+        self._email_sender = email_sender if email_sender is not None else EmailSender()
 
     async def send_otp(self, student_id: str) -> Result:
         otp = secrets.randbelow(9000) + 1000
@@ -18,7 +19,7 @@ class OTPService:
             return Error("An error occured when creating OTP")
 
         email_address = f"{student_id}@sit.singaporetech.edu.sg"
-        email_response = await send_email(
+        email_response = await self._email_sender.send(
             to_email=email_address,
             subject="Your OTP for Login",
             html_content=f"Your OTP is {otp}",

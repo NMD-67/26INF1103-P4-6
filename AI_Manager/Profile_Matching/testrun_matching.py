@@ -11,7 +11,8 @@ from repositories.matches_repo import MatchesRepo
 from services.match_service import MatchService
 from .groq_key_pool import GroqKeyPool
 from .groq_scorer import GroqScorer
-from .supabase_user_source import SupabaseUserSource
+from .repository_user_source import RepositoryUserSource
+from repositories.user_repo import UserRepo
 from .matching_service import MatchingService
 
 if __name__ == "__main__":
@@ -20,7 +21,7 @@ if __name__ == "__main__":
     try:
         service = MatchingService(
             GroqScorer(keys),
-            SupabaseUserSource.from_env(),
+            RepositoryUserSource(UserRepo(pool)),
             MatchService(MatchesRepo(pool)),
         )
         results = service.recommend("2605779", limit=5)

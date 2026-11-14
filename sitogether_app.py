@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from datetime import date
+from services.profile_form import ProfileForm
+from services.recommendation_service import RecommendationService
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class SITogetherApp:
         self._fields = profile_fields
         self._dealbreaker_class = dealbreaker_class
         self._student_id = None
+        self._profile_form = ProfileForm(profile_logic, field_config, profile_fields, dealbreaker_class)
 
     def login(self):
         student_id = self._io.ask_student_id()
@@ -47,63 +49,10 @@ class SITogetherApp:
         return result.data
 
     def _form_values(self, profile):
-        """Translate a loaded model into the existing form's field names."""
-        details = profile.get_user_details()
-        values = {}
-        for key, settings in self._config.items():
-            form_key = settings.get("form_key", key)
-            value = details.get(key, details.get(form_key))
-
-            if form_key == "birthday" and isinstance(value, date):
-                value = value.strftime("%d/%m/%Y")
-
-            values[form_key] = value
-        preferences = profile.dealbreakers
-        if preferences is not None:
-            values["min_preferred_age"] = preferences.min_age
-            values["max_preferred_age"] = preferences.max_age
-            # Preserve all selected blacklist values when loading the form.
-            values["race_preference"] = preferences.race
-            values["religion_preference"] = preferences.religion
-        return values
-
-    def _preference_list(self, value):
-        if value is None or value == "" or value in ("No preference", "Prefer not to say"):
-            return []
-        return value.copy() if isinstance(value, list) else [value]
+        return self._profile_form.form_values(profile)
 
     def _storage_values(self, answers):
-        """Map form answers to the repository contract; perform no SQL here."""
-        preference_keys = {"race_preference", "religion_preference",
-                           "min_preferred_age", "max_preferred_age"}
-        updates = {}
-        for key, settings in self._config.items():
-            form_key = settings.get("form_key", key)
-            if key == "student_id" or form_key == "birthday" or form_key in preference_keys:
-                continue
-            if form_key not in answers:
-                continue
-            value = answers[form_key]
-            if settings["storage"] is None:
-                if value not in (None, "", []):
-                    raise ValueError(f"Storage for {form_key} is not configured yet.")
-                continue
-            if settings.get("editable", False):
-                updates[key] = value
-
-        # Birthday is used only in memory; never pass it to the repository.
-        if answers.get("birthday"):
-            updates.update(self._logic.process_birthday(answers["birthday"]))
-
-        gender = answers.get("match_preference")
-        updates["dealbreakers"] = self._dealbreaker_class(
-            min_age=answers.get("min_preferred_age") or None,
-            max_age=answers.get("max_preferred_age") or None,
-            race=self._preference_list(answers.get("race_preference")),
-            religion=self._preference_list(answers.get("religion_preference")),
-            gender=None if gender == "Both" else gender,
-        ).to_row()
-        return updates
+        return self._profile_form.storage_values(answers)
 
     def _save_profile(self, answers):
         result = self._users.update_user(
@@ -115,10 +64,7 @@ class SITogetherApp:
         return True
 
     def _questions_for_profile(self, answers):
-        # Existing users with both derived fields need not re-enter their birthday.
-        if answers.get("age") is not None and answers.get("horoscope"):
-            return [field for field in self._fields if field["key"] != "birthday"]
-        return self._fields
+        return self._profile_form.questions_for_profile(answers)
 
     def complete_profile(self):
         answers = self._form_values(self._load_profile())
@@ -182,49 +128,15 @@ class SITogetherApp:
 
     def view_matches(self):
         self._io.show("Finding compatible profiles. Please wait...")
-        eligible = self._users.filter_users_by_dealbreaker(self._student_id)
-        if eligible is None:
-            self._io.show_error("Candidate filtering has not been implemented yet.")
-            return
-        if not eligible.success:
-            self._io.show_error(eligible.error_msg)
-            return
-        # Respect existing accept/reject decisions and current mutual preferences.
-        decisions = self._matches.get_decided_candidate_ids(self._student_id)
-        if not decisions.success:
-            self._io.show_error(decisions.error_msg)
-            return
-        excluded_ids = {str(value) for value in decisions.data}
-        excluded_ids.add(str(self._student_id))
-        candidates = [candidate for candidate in eligible.data
-                      if str(candidate.student_id) not in excluded_ids]
-        eligible_ids = {str(candidate.student_id) for candidate in candidates}
-        if not candidates:
-            self._io.show("No new profiles match your current preferences.")
-            return
-        user = self._load_profile()
-        for candidate in candidates:
-            score = self._scoring.score(user, candidate)
-            if score is None:
-                continue
-            result = self._matches.create_match(
-                self._student_id, candidate.student_id,
-                score.score, score.reason,
-            )
-            if not result.success:
-                self._io.show_error(result.error_msg)
-                return
-        result = self._matches.get_candidates_for_user(self._student_id)
+        recommendations = RecommendationService(self._users, self._matches, self._scoring)
+        result = recommendations.get_recommendations(self._student_id)
         if not result.success:
             self._io.show_error(result.error_msg)
             return
-        # Re-check stored recommendations against current preferences and decisions.
-        current_candidates = [candidate for candidate in result.data
-                              if str(candidate.student_id) in eligible_ids]
-        if not current_candidates:
+        if not result.data:
             self._io.show("No new profiles match your current preferences.")
             return
-        for candidate in current_candidates:
+        for candidate in result.data:
             self._io.show_candidate(candidate)
             decision = self._io.ask_match_decision()
             if decision == "0":

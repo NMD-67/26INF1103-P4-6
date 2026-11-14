@@ -3,8 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    command: ["python", "-m", "tele.bot"]
     env_file:
       - .env
-    volumes:
-      - ./Data_Manager/database/service_account.json:/app/Data_Manager/database/service_account.json:ro
     restart: unless-stopped

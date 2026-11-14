@@ -184,18 +184,8 @@ class MatchesRepo:
             ).fetchall()
         return [str(row["candidate_id"]) for row in rows]
 
-    def get_candidate_with_highest_score(self, student_id: str) -> Candidate | None:
-        """
-        Finds the candidate with the highest score for student.
-        TODO: Teammate's original implementation is not yet provided.
-        """
-        return None
-
     def get_matches_for_user(self, student_id: str) -> list[Match] | None:
-        """
-        Returns a list of matches for the user, returns None if an error.
-        TODO: Teammate's original implementation is not yet provided.
-        """
+        """Load profiles where both students accepted; database errors propagate."""
         matches_list = []
         user_table_fields = ["u." + field for field in SCALAR_FIELDS]
         user_fields_str = ", ".join(user_table_fields)

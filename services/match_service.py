@@ -3,11 +3,21 @@ from results.error import Error
 from results.result import Result
 from results.success import Success
 from AI_Manager.Profile_Matching.groq_scorer import GroqScorer, GroqKeyPool
-from AI_Manager.Profile_Matching.supabase_user_source import SupabaseUserSource
+from AI_Manager.Profile_Matching.repository_user_source import RepositoryUserSource
+from repositories.user_repo import UserRepo
+import logging
+
 from AI_Manager.Profile_Matching.matching_service import MatchingService
+
+logger = logging.getLogger(__name__)
+
+
 class MatchService:
-    def __init__(self, match_repo: MatchesRepo):
+    def __init__(self, match_repo: MatchesRepo, user_source=None):
         self.match_repo = match_repo
+        self._users = user_source
+        if self._users is None:
+            self._users = RepositoryUserSource(UserRepo(match_repo.pool))
 
     def create_match(
         self,
@@ -47,26 +57,33 @@ class MatchService:
         return Error("Failed to update status")
 
     def get_next_candidate(self, student_id: str, generated: bool = False) -> Result:
-        candidate = self.match_repo.get_candidates_for_user(student_id, True)
-        if len(candidate) > 0:
-            return Success(data=candidate[0])
-        elif not generated:
-            # TODO: Populate candidate list (Waiting on VALERIE)
-            try:
-                service = MatchingService(
-                    GroqScorer(GroqKeyPool.from_env()),
-                    SupabaseUserSource.from_env(),
-                    self,
-                )
-                results = service.recommend(student_id, limit=5)
-                if results:
-                    service.save(student_id, results)
+        """Revalidate stored profiles before display; filter before fresh scoring."""
+        keys = None
+        try:
+            excluded = set(self.match_repo.get_decided_candidate_ids(student_id))
+            eligible = self._users.get_candidates(student_id, exclude=excluded)
+            eligible_ids = {str(user.student_id) for user in eligible}
+            # Fetch all pending rows: the first may no longer satisfy preferences.
+            for candidate in self.match_repo.get_candidates_for_user(student_id):
+                if str(candidate.student_id) in eligible_ids:
+                    return Success(data=candidate)
+            if not eligible or generated:
+                return Error("No new profiles match your current preferences.")
+            keys = GroqKeyPool.from_env()
+            service = MatchingService(GroqScorer(keys), self._users, self)
+            results = service.recommend(student_id, limit=5)
+            if results:
+                counts = service.save(student_id, results)
+                if counts["saved"]:
                     return self.get_next_candidate(student_id, True)
-            except Exception as e:
-                print(e)
-                return Error("An Error Ocurred :(")
-                    
-        return Error(error_msg=f"You've run out of people :(")
+                return Error("Could not save recommendations. Please try again later.")
+            return Error("No new recommendations are available.")
+        except Exception:
+            logger.exception("Could not retrieve the next recommendation")
+            return Error("Recommendations are temporarily unavailable.")
+        finally:
+            if keys is not None:
+                keys.close()
 
     def get_all_matches(self, student_id: str) -> Result:
         """Return profiles where both students accepted each other."""

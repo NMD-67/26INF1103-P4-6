@@ -55,7 +55,7 @@ class OfflineChecks(unittest.TestCase):
         self.assertNotIn("dealbreakers", fields)
 
     def test_blacklist_and_age_filtering(self):
-        from repositories.user_repo import UserRepo
+        from Data_Manager.repositories.user_repo import UserRepo
         from models.user import User
         pool = MagicMock()
         conn = pool.connection.return_value.__enter__.return_value
@@ -77,7 +77,7 @@ class OfflineChecks(unittest.TestCase):
         self.assertEqual(len(repo.get_users_by_dealbreaker("A")), 4)
 
     def test_otp_is_private_and_consumed(self):
-        from services.otp_service import OTPService
+        from Logic_Manager.services.otp_service import OTPService
         repo = Mock()
         repo.get_otp.return_value = 1234
         output = StringIO()
@@ -150,7 +150,7 @@ class OfflineChecks(unittest.TestCase):
                     GroqScorer._parse_and_validate(json.dumps({**valid, key: invalid}))
 
     def test_shared_recommendations_save_weighted_category_scores(self):
-        from services.recommendation_service import RecommendationService
+        from Logic_Manager.services.recommendation_service import RecommendationService
         users, matches, scoring = Mock(), Mock(), Mock()
         users.filter_users_by_dealbreaker.return_value = NS(success=True, data=[NS(student_id="B")])
         users.get_profile.return_value = NS(success=True, data=NS(student_id="A"))
@@ -167,8 +167,8 @@ class OfflineChecks(unittest.TestCase):
 
     def test_category_scores_round_trip_and_upsert(self):
         from models.candidate import Candidate
-        from repositories.matches_repo import MatchesRepo
-        from services.match_service import MatchService
+        from Data_Manager.repositories.matches_repo import MatchesRepo
+        from Logic_Manager.services.match_service import MatchService
         candidate = Candidate.from_dict(dict(student_id="B", compatibility_score=63,
             interest_score=90, personality_score=60, preferences_score=30))
         self.assertEqual(candidate.interest_score, 90)
@@ -186,11 +186,11 @@ class OfflineChecks(unittest.TestCase):
 
     def test_scores_display_for_candidates_and_failed_connection_suggestions(self):
         from IO_Manager.console_io import ConsoleIO
-        from tele.telegram_io import TelegramIO
+        from IO_Manager.telegram.telegram_io import TelegramIO
         from models.candidate import Candidate
         from models.match import Match
         from models.user import User
-        from AI_Manager.Suggestions_generator.connection_suggestion_service import ConnectionSuggestionService
+        from Logic_Manager.services.connection_suggestion_service import ConnectionSuggestionService
         scores = dict(compatibility_score=63, interest_score=90,
                       personality_score=60, preferences_score=30, reason="Shared interests")
         candidate = Candidate(student_id="B", **scores)
@@ -216,7 +216,7 @@ class OfflineChecks(unittest.TestCase):
         self.assertIn("Overall Compatibility: Not available", ConsoleIO.format_compatibility({}))
 
     def test_connection_repository_loads_viewer_scores(self):
-        from repositories.matches_repo import MatchesRepo
+        from Data_Manager.repositories.matches_repo import MatchesRepo
         pool = MagicMock()
         conn = pool.connection.return_value.__enter__.return_value
         conn.execute.return_value.fetchall.side_effect = [
@@ -277,7 +277,7 @@ class OfflineChecks(unittest.TestCase):
         self.assertFalse(app._save_profile_with_retry(answers))
 
     def test_repository_update_checks_user_exists(self):
-        from repositories.user_repo import UserRepo
+        from Data_Manager.repositories.user_repo import UserRepo
         pool = MagicMock()
         conn = pool.connection.return_value.__enter__.return_value
         conn.execute.return_value.fetchone.return_value = None
@@ -292,7 +292,7 @@ class OfflineChecks(unittest.TestCase):
     def test_connection_survives_suggestion_failure(self):
         from models.user import User
         from models.match import Match
-        from AI_Manager.Suggestions_generator import ConnectionSuggestionService
+        from Logic_Manager.services.connection_suggestion_service import ConnectionSuggestionService
         from IO_Manager.console_io import ConsoleIO
         matches = Mock()
         matches.get_all_matches.return_value = NS(success=True, data=[
@@ -304,13 +304,13 @@ class OfflineChecks(unittest.TestCase):
         for failure in (False, True):
             generator.generate_suggestions.return_value = {"success": False, "error": "Offline"}
             generator.generate_suggestions.side_effect = RuntimeError("Offline") if failure else None
-            with patch("AI_Manager.Suggestions_generator.connection_suggestion_service.logger.exception"):
+            with patch("Logic_Manager.services.connection_suggestion_service.logger.exception"):
                 result = service.get_matches_for_user("A")[0]
             text = ConsoleIO().format_recommendations(result)
             self.assertIn("@example", text)
             self.assertIn("temporarily unavailable", text)
         matches.get_all_matches.return_value = NS(success=False)
-        with patch("AI_Manager.Suggestions_generator.connection_suggestion_service.logger.warning"):
+        with patch("Logic_Manager.services.connection_suggestion_service.logger.warning"):
             result = service.get_matches_for_user("A")[0]
         self.assertNotIn("@example", ConsoleIO().format_recommendations(result))
 
@@ -366,6 +366,7 @@ def load_tests(loader, tests, pattern):
     from ci.telegram_tests import TelegramChecks
     tests.addTests(loader.loadTestsFromTestCase(TelegramChecks))
     tests.addTests(loader.discover(str(ROOT / "tests"), pattern="test_mutual_preference_filter.py"))
+    tests.addTests(loader.discover(str(ROOT / "tests"), pattern="test_birthday_privacy.py"))
     return tests
 
 

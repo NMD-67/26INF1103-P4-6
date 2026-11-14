@@ -40,10 +40,11 @@ This workflow does not deploy the application or automatically merge changes.
 
 ## Remaining quality fixes
 
-The suite also runs `ci/quality_tests.py` and the focused mutual-preference
-checks in `tests/test_mutual_preference_filter.py`. Dockerfile copies both.
-Only these maintained tests are loaded: other old test scripts may contact live
-services and are not discovered automatically.
+The suite also runs `ci/quality_tests.py`, `ci/telegram_tests.py`,
+`tests/test_mutual_preference_filter.py` and `tests/test_birthday_privacy.py`.
+The Dockerfile includes all of them. Legacy spreadsheet tests and manual
+live-service development scripts have been removed. Privacy checks use the
+current ProfileLogicManager and ProfileForm classes directly.
 
 The new checks cover the secondary matching route's exclusions, stale stored
 profiles, email timeout/failure handling, database pool cleanup, failed account

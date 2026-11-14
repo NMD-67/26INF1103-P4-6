@@ -2,10 +2,8 @@
 from datetime import date
 import unittest
 from Logic_Manager.profile_logic_manager import ProfileLogicManager
-from Logic_Manager import logic_manager
-from sitogether_app import SITogetherApp
-from config.user_fields import USER_FIELD_CONFIG, PROFILE_FIELDS
-from models.dealbreaker import DealBreaker
+from IO_Manager.profile_form import ProfileForm
+from config.user_fields import PROFILE_FIELDS
 
 
 class BirthdayPrivacyTests(unittest.TestCase):
@@ -37,15 +35,9 @@ class BirthdayPrivacyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.logic.process_birthday("31/02/2005")
 
-    def test_existing_wrapper(self):
-        self.assertEqual(logic_manager.process_birthday("09/11/2005", date(2026, 11, 12))["age"],21)
-
     def test_persisted_values_do_not_include_birthday(self):
-        app = SITogetherApp(
-            None, None, None, None, None, None, self.logic,
-            USER_FIELD_CONFIG, PROFILE_FIELDS, DealBreaker
-        )
-        values = app._storage_values({
+        form = ProfileForm(logic=self.logic)
+        values = form.storage_values({
             "birthday": "09/11/2005",
             "name": "Student", "match_preference": "Both",
         })
@@ -54,11 +46,8 @@ class BirthdayPrivacyTests(unittest.TestCase):
         self.assertIn("age", values)
 
     def test_existing_user_not_reprompted(self):
-        app = SITogetherApp(
-            None, None, None, None, None, None, self.logic,
-            USER_FIELD_CONFIG, PROFILE_FIELDS, DealBreaker
-        )
-        questions = app._questions_for_profile({"age": 21, "horoscope": "Scorpio"})
+        form = ProfileForm(logic=self.logic)
+        questions = form.questions_for_profile({"age": 21, "horoscope": "Scorpio"})
         self.assertNotIn("birthday", [question["key"] for question in questions])
 
 if __name__ == "__main__":

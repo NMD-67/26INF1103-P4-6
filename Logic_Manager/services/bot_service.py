@@ -1,4 +1,4 @@
-from repositories.bot_repo import BotRepo
+from Data_Manager.repositories.bot_repo import BotRepo
 from results.success import Success
 from results.result import Result
 from results.error import Error

@@ -1,13 +1,13 @@
-from repositories.matches_repo import MatchesRepo
+from Data_Manager.repositories.matches_repo import MatchesRepo
 from results.error import Error
 from results.result import Result
 from results.success import Success
 from AI_Manager.Profile_Matching.groq_scorer import GroqScorer, GroqKeyPool
-from AI_Manager.Profile_Matching.repository_user_source import RepositoryUserSource
-from repositories.user_repo import UserRepo
+from Data_Manager.repository_user_source import RepositoryUserSource
+from Data_Manager.repositories.user_repo import UserRepo
 import logging
 
-from AI_Manager.Profile_Matching.matching_service import MatchingService
+from Logic_Manager.Matching.matching_service import MatchingService
 
 logger = logging.getLogger(__name__)
 

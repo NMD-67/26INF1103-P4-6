@@ -9,8 +9,8 @@ from models.profile import Profile
 from models.candidate import Candidate
 from models.dealbreaker import DealBreaker
 from config.user_fields import PROFILE_FIELDS
-from tele.telegram_app import TelegramApp
-from tele.profile_setup import STATE_KEY
+from IO_Manager.telegram.telegram_app import TelegramApp
+from IO_Manager.telegram.profile_setup import STATE_KEY
 
 
 async def immediate_thread(function, *args, **kwargs):
@@ -183,7 +183,7 @@ class TelegramChecks(unittest.TestCase):
         self.run_async(self.controller.text(self.update, self.context, raw='Enjoy coding'))
         self.run_async(self.controller.save(self.update, self.context))
         self.users.update_user.side_effect = RuntimeError('Offline')
-        with patch('tele.profile_setup.logger.exception'):
+        with patch('IO_Manager.telegram.profile_setup.logger.exception'):
             self.run_async(self.controller.save(self.update, self.context))
         self.assertIs(self.context.user_data[STATE_KEY], state)
         self.assertEqual(state['profile']['bio'], 'Enjoy coding')
@@ -276,13 +276,13 @@ class TelegramChecks(unittest.TestCase):
         self.context.user_data[STATE_KEY] = {'profile': {'bio':'Draft'}}
         handler = AsyncMock(side_effect=RuntimeError('Offline'))
         handler.__name__ = 'test_handler'
-        with patch('tele.telegram_app.logger.exception'):
+        with patch('IO_Manager.telegram.telegram_app.logger.exception'):
             self.run_async(self.controller._guard(handler)(self.update, self.context))
         self.assertEqual(self.context.user_data[STATE_KEY]['profile']['bio'], 'Draft')
         self.assertIn('Please retry', self.text())
 
     def test_bot_service_does_not_report_failed_logout_as_success(self):
-        from services.bot_service import BotService
+        from Logic_Manager.services.bot_service import BotService
         repo = Mock()
         repo.remove_bot.return_value = False
         self.assertFalse(BotService(repo).logout(42).success)

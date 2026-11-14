@@ -3,7 +3,7 @@ import asyncio
 import logging
 import secrets
 from config.user_fields import PROFILE_FIELDS
-from services.profile_form import ProfileForm
+from IO_Manager.profile_form import ProfileForm
 
 logger = logging.getLogger(__name__)
 STATE_KEY = "profile_draft"

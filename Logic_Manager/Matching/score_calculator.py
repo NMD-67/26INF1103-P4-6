@@ -1,4 +1,4 @@
-from ...AI_Manager.Profile_Matching.category_scores import CategoryScores
+from AI_Manager.Profile_Matching.category_scores import CategoryScores
 
 class ScoreCalculator:
     """Combines the three category scores into the overall score."""

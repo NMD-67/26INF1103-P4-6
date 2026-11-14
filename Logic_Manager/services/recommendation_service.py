@@ -1,5 +1,5 @@
 """Shared recommendation workflow for the CLI and Telegram."""
-from AI_Manager.Profile_Matching.score_calculator import ScoreCalculator
+from Logic_Manager.Matching.score_calculator import ScoreCalculator
 from results.success import Success
 from results.error import Error
 

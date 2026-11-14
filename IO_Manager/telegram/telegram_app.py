@@ -8,10 +8,10 @@ from telegram.error import TelegramError
 from telegram.ext import CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from config.user_fields import PROFILE_FIELDS
 from IO_Manager.profile_validator import ProfileValidator
-from services.profile_form import ProfileForm
-from services.recommendation_service import RecommendationService
-from tele.profile_setup import TelegramProfileForm, STATE_KEY
-from tele.telegram_io import TelegramIO
+from IO_Manager.profile_form import ProfileForm
+from Logic_Manager.services.recommendation_service import RecommendationService
+from IO_Manager.telegram.profile_setup import TelegramProfileForm, STATE_KEY
+from IO_Manager.telegram.telegram_io import TelegramIO
 
 logger = logging.getLogger(__name__)
 

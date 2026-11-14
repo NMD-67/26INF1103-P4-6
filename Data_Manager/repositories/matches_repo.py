@@ -30,6 +30,7 @@ class MatchesRepo:
             )
         return result
 
+    
     def create_match(
         self,
         student_id: str,
@@ -38,25 +39,66 @@ class MatchesRepo:
         reason: str,
         interest_score: int,
         personality_score: int,
-        preferences_score: int,
+        preferences_score: int
     ) -> bool:
-        """Create a new match in the database."""
-        # Refresh AI results while preserving the existing decision/status.
+        """
+        Save a new match or refresh an existing pending match.
+
+        Accepted and rejected matches are never overwritten.
+        """
+
         with self.pool.connection() as conn:
+
             result = conn.execute(
                 """
-              INSERT INTO matches (student_id, candidate_id, compatibility_score, reason, interest_score, personality_score, preferences_score, status)
-              VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
-              ON CONFLICT (student_id, candidate_id) 
-              DO UPDATE SET compatibility_score = EXCLUDED.compatibility_score,
-                            reason = EXCLUDED.reason,
-                            interest_score = EXCLUDED.interest_score,
-                            personality_score = EXCLUDED.personality_score,
-                            preferences_score = EXCLUDED.preferences_score
-              RETURNING student_id
-              """,
-                (student_id, candidate_id, compatibility_score, reason, interest_score, personality_score, preferences_score),
+                INSERT INTO matches (
+                    student_id,
+                    candidate_id,
+                    compatibility_score,
+                    reason,
+                    interest_score,
+                    personality_score,
+                    preferences_score,
+                    status
+                )
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, 'pending'
+                )
+
+                ON CONFLICT (student_id, candidate_id)
+
+                DO UPDATE SET
+                    compatibility_score =
+                        EXCLUDED.compatibility_score,
+
+                    reason =
+                        EXCLUDED.reason,
+
+                    interest_score =
+                        EXCLUDED.interest_score,
+
+                    personality_score =
+                        EXCLUDED.personality_score,
+
+                    preferences_score =
+                        EXCLUDED.preferences_score
+
+                WHERE matches.status = 'pending'
+
+                RETURNING student_id
+                """,
+                (
+                    student_id,
+                    candidate_id,
+                    compatibility_score,
+                    reason,
+                    interest_score,
+                    personality_score,
+                    preferences_score
+                )
             ).fetchone()
+
         return result is not None
 
     def get_candidates_for_user(

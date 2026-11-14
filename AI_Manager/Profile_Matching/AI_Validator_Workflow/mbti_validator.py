@@ -1,21 +1,26 @@
+"""Deterministic MBTI TYPE SIMILARITY, not a scientifically proven match score."""
 from .category_validator import CategoryValidator
 
 
 class MbtiTableValidator(CategoryValidator):
-    """Rule-based MBTI check: more shared letters, higher score. Placeholder heuristic;
-    swap for an EQIQs-backed validator without touching any other class."""
     category = "personality_values"
+    _OPTIONS = ("EI", "SN", "TF", "JP")
 
     def validate_batch(self, main_user, candidates):
-        a = self._clean(main_user.mbti)
-        out = []
-        for c in candidates:
-            b = self._clean(c.mbti)
-            out.append(None if a is None or b is None
-                       else 20 + 20 * sum(x == y for x, y in zip(a, b)))
-        return out
+        a = self._clean(getattr(main_user, "mbti", None))
+        result = []
+        for candidate in candidates:
+            b = self._clean(getattr(candidate, "mbti", None))
+            if a is None or b is None:
+                result.append(None)
+            else:
+                shared = sum(x == y for x, y in zip(a, b))
+                result.append(40 + 15 * shared)  # 40,55,70,85,100
+        return result
 
-    @staticmethod
-    def _clean(value):
-        v = (value or "").strip().upper()
-        return v if len(v) == 4 and v.isalpha() else None
+    @classmethod
+    def _clean(cls, value):
+        text = str(value or "").strip().upper()
+        return text if len(text) == 4 and all(
+            letter in pair for letter, pair in zip(text, cls._OPTIONS)
+        ) else None

@@ -1,4 +1,5 @@
 """Shared recommendation workflow for the CLI and Telegram."""
+from AI_Manager.Profile_Matching.score_calculator import ScoreCalculator
 from results.success import Success
 from results.error import Error
 
@@ -8,6 +9,7 @@ class RecommendationService:
         self._users = users
         self._matches = matches
         self._scoring = scoring
+        self._calculator = ScoreCalculator()
 
     def eligible_users(self, student_id):
         eligible = self._users.filter_users_by_dealbreaker(student_id)
@@ -35,10 +37,14 @@ class RecommendationService:
             score = self._scoring.score(profile.data, candidate)
             if score is None:
                 continue
-            # Preserve the existing CLI contract. The three-score integration is
-            # deferred to its owner; update this shared call when that work lands.
             result = self._matches.create_match(
-                student_id, candidate.student_id, score.score, score.reason,
+                student_id=student_id,
+                candidate_id=candidate.student_id,
+                compatibility_score=self._calculator.overall(score.categories),
+                interest_score=score.categories.interests_lifestyle,
+                personality_score=score.categories.personality_values,
+                preferences_score=score.categories.relationship_goals,
+                reason=score.reason,
             )
             if not result.success:
                 return result

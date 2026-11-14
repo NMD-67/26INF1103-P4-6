@@ -1,3 +1,5 @@
+from AI_Manager.Profile_Matching.category_scores import CategoryScores
+from AI_Manager.Profile_Matching.score_result import ScoreResult
 """Regression checks for non-score fixes; run through ci/offline_tests.py."""
 import unittest
 from types import SimpleNamespace as NS
@@ -37,13 +39,13 @@ class QualityChecks(unittest.TestCase):
         from models.user import User
         with patch("AI_Manager.Profile_Matching.lazy_groq_scorer.GroqKeyPool.from_env") as keys, \
              patch("AI_Manager.Profile_Matching.groq_scorer.GroqScorer._call_api",
-                   return_value='{"score":80,"reason":"Shared interests"}'):
+                   return_value='{"interests_lifestyle":80,"personality_values":80,"relationship_goals":80,"reason":"Shared interests"}'):
             scorer = LazyGroqScorer()
             keys.assert_not_called()
             for attempt in range(2):
                 self.assertTrue(scorer.prepare())
                 result = scorer.score(User(student_id="A"), User(student_id="B"))
-                self.assertEqual(result.score, 80)
+                self.assertEqual(result.categories.interests_lifestyle, 80)
             keys.assert_called_once()
             scorer.close()
             scorer.close()
@@ -136,7 +138,7 @@ class QualityChecks(unittest.TestCase):
         decisions = Mock()
         decisions.get_decided_candidate_ids.return_value = NS(success=True, data=['B'])
         scorer = Mock()
-        scorer.score.return_value = NS(score=80)
+        scorer.score.return_value = ScoreResult(CategoryScores(80, 80, 80), "Shared hobby")
         service = MatchingService(scorer, RepositoryUserSource(repo), decisions)
         self.assertEqual(list(service.recommend('A')), ['C'])
         self.assertEqual(scorer.score.call_count, 1)

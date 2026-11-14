@@ -49,7 +49,10 @@ class MatchesRepo:
               VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
               ON CONFLICT (student_id, candidate_id) 
               DO UPDATE SET compatibility_score = EXCLUDED.compatibility_score,
-                            reason = EXCLUDED.reason
+                            reason = EXCLUDED.reason,
+                            interest_score = EXCLUDED.interest_score,
+                            personality_score = EXCLUDED.personality_score,
+                            preferences_score = EXCLUDED.preferences_score
               RETURNING student_id
               """,
                 (student_id, candidate_id, compatibility_score, reason, interest_score, personality_score, preferences_score),

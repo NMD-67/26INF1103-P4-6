@@ -147,10 +147,5 @@ class GroqScorer(CompatibilityScorer):
 
         reason = parsed.get("reason")
         if not isinstance(reason, str) or not reason.strip():
-<<<<<<< HEAD
             raise ValueError("Reason must be a non-empty string")
-        return ScoreResult(score=int(round(score)), reason=reason)
-=======
-            reason = None
         return ScoreResult(categories=CategoryScores(**values), reason=reason)
->>>>>>> 87a6783 (add three compatability scoring)

@@ -366,6 +366,7 @@ def load_tests(loader, tests, pattern):
     from ci.telegram_tests import TelegramChecks
     tests.addTests(loader.loadTestsFromTestCase(TelegramChecks))
     tests.addTests(loader.discover(str(ROOT / "tests"), pattern="test_mutual_preference_filter.py"))
+    tests.addTests(loader.discover(str(ROOT / "tests"), pattern="test_birthday_privacy.py"))
     return tests
 
 

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from ...models.category_scores import CategoryScores
+from models.category_scores import CategoryScores
 
 @dataclass(frozen=True)
 class ScoreResult:

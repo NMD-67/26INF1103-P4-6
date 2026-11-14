@@ -1,6 +1,6 @@
 # Test double that returns a fixed score without calling any API, and can stand in for GroqScorer.
 
-from ...models.category_scores import CategoryScores
+from models.category_scores import CategoryScores
 from .compatibility_scorer import CompatibilityScorer
 from .score_result import ScoreResult
 

@@ -340,6 +340,26 @@ class OfflineChecks(unittest.TestCase):
         self.assertNotIn("birthday", REPOSITORY_FIELD_CONFIG)
         self.assertIn("birthday", [f["key"] for f in PROFILE_FIELDS])
 
+    def test_privacy_notice_precedes_cli_student_id(self):
+        from sitogether_app import SITogetherApp
+        from config.privacy import PRIVACY_NOTICE
+        app = SITogetherApp.__new__(SITogetherApp)
+        app._io = Mock()
+        app._io.ask_student_id.side_effect = KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            app.login()
+        self.assertEqual(app._io.method_calls[0], unittest.mock.call.show(PRIVACY_NOTICE))
+        self.assertEqual(app._io.method_calls[1], unittest.mock.call.ask_student_id())
+
+    def test_bio_prompt_warns_about_identifying_information(self):
+        from config.privacy import BIO_PRIVACY_WARNING
+        from config.user_fields import PROFILE_FIELDS
+        from IO_Manager.console_io import ConsoleIO
+        field = next(f for f in PROFILE_FIELDS if f["key"] == "bio")
+        reader = Mock(return_value="I enjoy coding")
+        ConsoleIO(read=reader).ask_field(field)
+        self.assertIn(BIO_PRIVACY_WARNING, reader.call_args.args[0])
+
     def test_suggestions_schema(self):
         from AI_Manager.Suggestions_generator import SuggestionsGenerator
         generator = SuggestionsGenerator(Mock(), sleep=lambda seconds: None)

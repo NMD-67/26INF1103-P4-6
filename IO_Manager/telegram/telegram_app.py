@@ -7,6 +7,7 @@ from telegram import BotCommand, MenuButtonCommands
 from telegram.error import TelegramError
 from telegram.ext import CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from config.user_fields import PROFILE_FIELDS
+from config.privacy import PRIVACY_NOTICE
 from IO_Manager.profile_validator import ProfileValidator
 from IO_Manager.profile_form import ProfileForm
 from Logic_Manager.services.recommendation_service import RecommendationService
@@ -55,7 +56,7 @@ class TelegramApp:
         if sid is None:
             return
         owner = update.effective_user.id
-        await self._io.send(update, "SITogether â€” choose an action:", [
+        await self._io.send(update, "SITogether - choose an action:", [
             [("Find matches", f"nav:{owner}:matches"), ("View connections", f"nav:{owner}:connections")],
             [("My profile", f"nav:{owner}:profile"), ("Update profile", f"nav:{owner}:update")],
             [("Delete account", f"nav:{owner}:delete"), ("Quit / log out", f"nav:{owner}:logout")],
@@ -66,7 +67,8 @@ class TelegramApp:
         if result.success:
             await self.menu(update, context)
         else:
-            await self._io.send(update, "Welcome to SITogether! Send /login, or /login followed by your 7-digit student ID.")
+            await self._io.send(update, PRIVACY_NOTICE)
+            await self._io.send(update, "Welcome to SITogether! Send /login to begin.")
 
     def _send_otp(self, sid):
         # OTPService also uses a blocking repository; run the whole operation off
@@ -79,14 +81,11 @@ class TelegramApp:
             await self._io.send(update, "You are already logged in. Use /logout to change account.")
             await self.menu(update, context)
             return
-        if not context.args:
-            context.user_data["awaiting_student_id"] = True
-            await self._io.send(update, "What is your student ID? Enter 7 digits.")
-            return
-        if len(context.args) != 1:
-            await self._io.send(update, "Usage: /login <student_id>")
-            return
-        await self._login_id(update, context, context.args[0])
+        # Do not process command arguments before the user has seen the notice.
+        context.user_data.pop("pending_login", None)
+        await self._io.send(update, PRIVACY_NOTICE)
+        context.user_data["awaiting_student_id"] = True
+        await self._io.send(update, "What is your student ID? Enter 7 digits, or /cancel to stop.")
 
     async def _login_id(self, update, context, raw):
         field = next(f for f in PROFILE_FIELDS if f["key"] == "student_id")

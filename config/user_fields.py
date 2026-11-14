@@ -1,3 +1,4 @@
+from config.privacy import BIO_PRIVACY_WARNING
 """Shared profile questions, validation settings and repository mappings.
 
 PROFILE_FIELDS is generated for the CLI and Telegram forms.
@@ -190,7 +191,7 @@ USER_FIELD_CONFIG = {
         "kind": "text",
         "min_len": 1,
         "max_len": 300,
-        "hint": "max 300 characters; Tell us more about yourself",
+        "hint": "max 300 characters. " + BIO_PRIVACY_WARNING,
     },
     "race": {
         "editable": True,

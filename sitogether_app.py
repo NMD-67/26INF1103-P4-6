@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from IO_Manager.profile_form import ProfileForm
+from config.privacy import PRIVACY_NOTICE
 from Logic_Manager.services.recommendation_service import RecommendationService
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class SITogetherApp:
         self._profile_form = ProfileForm(profile_logic, field_config, profile_fields, dealbreaker_class)
 
     def login(self):
+        self._io.show(PRIVACY_NOTICE)
         student_id = self._io.ask_student_id()
         result = asyncio.run(self._otp.send_otp(student_id))
         if not result.success:

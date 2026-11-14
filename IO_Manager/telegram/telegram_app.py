@@ -52,6 +52,7 @@ class TelegramApp:
         return sid
 
     async def menu(self, update, context):
+        context.user_data.pop("suggestion_feedback", None)
         sid = await self._ready(update, context)
         if sid is None:
             return
@@ -153,11 +154,13 @@ class TelegramApp:
         await self.menu(update, context)
 
     async def setup(self, update, context):
+        context.user_data.pop("suggestion_feedback", None)
         sid = await self._student(update, context)
         if sid is not None:
             await self._drafts.begin(update, context, sid)
 
     async def update_profile(self, update, context):
+        context.user_data.pop("suggestion_feedback", None)
         sid = await self._ready(update, context)
         if sid is not None:
             await self._drafts.begin(update, context, sid, editing=True)
@@ -188,6 +191,8 @@ class TelegramApp:
             await self._login_id(update, context, raw)
         elif context.user_data.get("pending_login"):
             await self.otp(update, context, code=raw)
+        elif context.user_data.get("suggestion_feedback"):
+            await self._suggestion_feedback(update, context, raw)
         elif STATE_KEY in context.user_data:
             sid = await self._student(update, context)
             if sid is None:
@@ -205,6 +210,7 @@ class TelegramApp:
             await self._io.send(update, "Use /menu to choose an action, or /login to get started.")
 
     async def matches(self, update, context):
+        context.user_data.pop("suggestion_feedback", None)
         sid = await self._ready(update, context)
         if sid is None:
             return
@@ -278,13 +284,85 @@ class TelegramApp:
         sid = await self._ready(update, context)
         if sid is None:
             return
+        if STATE_KEY in context.user_data:
+            await self._io.send(update, "Save or cancel your profile draft before reviewing suggestions.")
+            return
+        context.user_data.pop("suggestion_feedback", None)
+        context.user_data["suggestion_reviews"] = {}
         await self._io.send(update, "Loading mutual connections and suggestions...")
         results = await asyncio.to_thread(self._suggestions.get_matches_for_user, sid)
         if not results:
             await self._io.send(update, "No mutual connections yet.")
         for result in results:
-            await self._io.send(update, self._io.connection(result))
+            state = {"student_id": sid, "chat_id": update.effective_chat.id,
+                     "result": result, "attempts": 0}
+            await self._show_suggestions(update, context, state)
         await self.menu(update, context)
+
+    async def _show_suggestions(self, update, context, state):
+        rows = None
+        if state["result"].get("success") and state["attempts"] < 3:
+            token = secrets.token_hex(8)
+            context.user_data.setdefault("suggestion_reviews", {})[token] = state
+            rows = [[("Keep suggestions", f"suggest:{token}:keep"),
+                     ("Regenerate", f"suggest:{token}:redo")]]
+        await self._io.send(update, self._io.connection(state["result"]), rows)
+        if state["attempts"] >= 3:
+            await self._io.send(update, "Regeneration limit reached. Keeping the latest successful suggestions.")
+
+    async def _suggestion_action(self, update, context, sid, parts):
+        state = context.user_data.get("suggestion_reviews", {}).get(parts[1]) if len(parts) == 3 else None
+        if (state is None or state["student_id"] != sid
+                or state["chat_id"] != update.effective_chat.id):
+            await self._io.send(update, "This suggestion menu has expired. Use /connections.")
+            return
+        if parts[2] == "keep":
+            context.user_data["suggestion_reviews"].pop(parts[1], None)
+            if context.user_data.get("suggestion_feedback") == parts[1]:
+                context.user_data.pop("suggestion_feedback", None)
+            await self._io.send(update, "Keeping these suggestions for this session.")
+        elif parts[2] == "redo":
+            if STATE_KEY in context.user_data:
+                await self._io.send(update, "Save or cancel your profile draft first.")
+                return
+            context.user_data["suggestion_feedback"] = parts[1]
+            await self._io.send(update, "What would you like changed? Enter 1-500 characters, or 0 to keep the current suggestions. Do not include personal contact details.")
+
+    async def _suggestion_feedback(self, update, context, raw):
+        sid = await self._student(update, context)
+        if sid is None:
+            return
+        token = context.user_data.get("suggestion_feedback")
+        reviews = context.user_data.get("suggestion_reviews", {})
+        state = reviews.get(token)
+        if (state is None or state["student_id"] != sid
+                or state["chat_id"] != update.effective_chat.id):
+            await self._io.send(update, "No suggestion feedback is pending in this chat. Use /connections.")
+            return
+        feedback = raw.strip()
+        if feedback == "0":
+            context.user_data.pop("suggestion_feedback", None)
+            await self._io.send(update, "Keeping the current suggestions.")
+            return
+        if not 1 <= len(feedback) <= 500:
+            await self._io.send(update, "Feedback must contain 1-500 characters, or enter 0 to cancel.")
+            return
+        context.user_data.pop("suggestion_feedback", None)
+        reviews.pop(token, None)  # Old buttons must not trigger another generation.
+        state["attempts"] += 1
+        await self._io.send(update, "Generating different suggestions. Please wait...")
+        try:
+            result = await asyncio.to_thread(
+                self._suggestions.regenerate_for_connection, sid,
+                state["result"]["user_b"], feedback, state["result"])
+        except Exception:
+            logger.exception("Suggestion regeneration failed")
+            result = {"success": False}
+        if result.get("success"):
+            state["result"] = result
+        else:
+            await self._io.send(update, "Could not regenerate suggestions. Keeping the previous suggestions.")
+        await self._show_suggestions(update, context, state)
 
     async def logout(self, update, context):
         linked = await asyncio.to_thread(self._bots.get_student_id, update.effective_user.id)
@@ -323,7 +401,9 @@ class TelegramApp:
         sid = await self._student(update, context)
         if sid is None:
             return
-        if parts[0] in ("field", "answer", "draft"):
+        if parts[0] == "suggest":
+            await self._suggestion_action(update, context, sid, parts)
+        elif parts[0] in ("field", "answer", "draft"):
             state = self._drafts.state(update, context, sid)
             if state is None:
                 await self._io.send(update, "No active draft here. Use /setup or /update.")

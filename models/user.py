@@ -1,4 +1,5 @@
 from dataclasses import dataclass, fields, field
+from datetime import date
 from models.dealbreaker import DealBreaker
 
 
@@ -6,6 +7,7 @@ from models.dealbreaker import DealBreaker
 class User:
     student_id: str
     name: str = None
+    birthday: date | None = None
     age: int = None
     horoscope: str = None
     gender: str = None

@@ -334,10 +334,10 @@ class OfflineChecks(unittest.TestCase):
         self.assertIs(Profile(student_id="A", dealbreakers=preferences).get_user_details()["dealbreakers"], preferences)
         self.assertEqual(Match(student_id="A", preferences_score=70).get_user_details()["preferences_score"], 70)
 
-    def test_birthday_is_input_only_in_repository_mapping(self):
+    def test_birthday_has_repository_mapping(self):
         from config.user_fields import SCALAR_FIELDS, REPOSITORY_FIELD_CONFIG, PROFILE_FIELDS
-        self.assertNotIn("birthday", SCALAR_FIELDS)
-        self.assertNotIn("birthday", REPOSITORY_FIELD_CONFIG)
+        self.assertIn("birthday", SCALAR_FIELDS)
+        self.assertIn("birthday", REPOSITORY_FIELD_CONFIG)
         self.assertIn("birthday", [f["key"] for f in PROFILE_FIELDS])
 
     def test_privacy_notice_precedes_cli_student_id(self):

@@ -149,7 +149,7 @@ class TelegramChecks(unittest.TestCase):
         self.run_async(self.controller.save(self.update, self.context))
         self.users.update_user.assert_called_once()
         values = self.users.update_user.call_args.args[1]
-        self.assertNotIn('birthday', values)
+        self.assertEqual(values['birthday'].isoformat(), '2005-06-15')
         self.assertIsInstance(values['age'], int)
         self.assertEqual(values['horoscope'], 'Gemini')
         self.assertNotIn(STATE_KEY, self.context.user_data)

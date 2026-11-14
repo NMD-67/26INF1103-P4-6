@@ -4,6 +4,7 @@ BEGIN;
 CREATE TABLE public.users (
     student_id TEXT CONSTRAINT users_student_id_key PRIMARY KEY,
     name TEXT,
+    birthday DATE,
     age INTEGER,
     horoscope TEXT,
     gender TEXT,

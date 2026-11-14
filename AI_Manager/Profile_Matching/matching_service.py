@@ -8,7 +8,7 @@ from .user_source import UserSource
 logger = logging.getLogger(__name__)
 
 from dataclasses import replace
-from .score_calculator import ScoreCalculator
+from ...Logic_Manager.Matching.score_calculator import ScoreCalculator
 
 class MatchingService:
     """Orchestrates: load users -> score each -> save. Depends on abstractions only."""

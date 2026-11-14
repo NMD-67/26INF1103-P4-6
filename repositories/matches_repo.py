@@ -35,10 +35,10 @@ class MatchesRepo:
         student_id: str,
         candidate_id: str,
         compatibility_score: float,
+        reason: str,
         interest_score: int,
         personality_score: int,
         preferences_score: int,
-        reason: str = None,
     ) -> bool:
         """Create a new match in the database."""
         # Refresh AI results while preserving the existing decision/status.

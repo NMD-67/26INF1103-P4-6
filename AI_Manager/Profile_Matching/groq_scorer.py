@@ -11,25 +11,32 @@ from models.user import User
 from .compatibility_scorer import CompatibilityScorer
 from .groq_key_pool import GroqKeyPool
 from .score_result import ScoreResult
+from .category_scores import CategoryScores
 
 logger = logging.getLogger(__name__)
 
 
 class GroqScorer(CompatibilityScorer):
     FIELDS_FOR_AI = (
-        "age", "gender", "course", "bio", "religion", "mbti",
-        "match_preference", "here_for", "expectations",
-        "ccas", "events", "hobbies", "interest_groups",
+        "gender", "bio", "religion", "mbti", "match_preference",
+        "here_for", "expectations", "ccas", "events", "hobbies", "interest_groups",
     )
+
     _INSTRUCTIONS = (
-        "You compare two user dating/matching profiles and return a single "
-        "compatibility score from 0 to 100, based on shared interests, "
-        "lifestyle, and stated preferences. "
-        "Also give a short reason (one sentence, max 20 words). "
-        "Empty fields mean the information is unknown, not incompatible. "
+        "You compare two user dating/matching profiles (profile_a is the viewer, "
+        "profile_b is the candidate). Return three category scores, each 0 to 100:\n"
+        "- interests_lifestyle: based on hobbies, ccas, events, interest_groups, bio.\n"
+        "- personality_values: based on mbti, bio, expectations, religion.\n"
+        "- relationship_goals: based on here_for, match_preference, expectations "
+        "(use gender to check whether match_preference fits).\n"
+        "Also give one short reason (max 25 words) covering the main similarities or clashes. "
+        "In the reason, never say 'profile A', 'profile B', 'A' or 'B'; say 'you' and 'they'. "
         "Respond ONLY with valid JSON: "
-        '{"score": <integer 0-100>, "reason": "<one sentence>"}'
+        '{"interests_lifestyle": <int>, "personality_values": <int>, '
+        '"relationship_goals": <int>, "reason": "<text>"}'
     )
+
+    _CATEGORY_KEYS = ("interests_lifestyle", "personality_values", "relationship_goals")
 
     def __init__(self, key_pool: GroqKeyPool, model="openai/gpt-oss-20b", max_attempts=3):
         self._pool = key_pool
@@ -114,23 +121,36 @@ class GroqScorer(CompatibilityScorer):
         return raw
 
     @staticmethod
+    def _check_score(value, name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{name} is not a number: {value!r}")
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError(f"{name} is not finite: {value!r}")
+        if not 0 <= value <= 100:
+            raise ValueError(f"{name} out of range: {value}")
+        return int(round(value))
+
+    @staticmethod
     def _parse_and_validate(raw: str) -> ScoreResult:
         try:
             parsed = json.loads(raw.strip())
         except json.JSONDecodeError as e:
             raise ValueError(f"Not valid JSON: {e}") from e
-        if not isinstance(parsed, dict) or "score" not in parsed:
-            raise ValueError("JSON must be an object with a 'score' key")
+        if not isinstance(parsed, dict):
+            raise ValueError("JSON must be an object")
 
-        score = parsed["score"]
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
-            raise ValueError(f"Score is not a number: {score!r}")
-        if isinstance(score, float) and not math.isfinite(score):
-            raise ValueError(f"Score is not finite: {score!r}")
-        if not 0 <= score <= 100:
-            raise ValueError(f"Score out of range: {score}")
+        values = {}
+        for key in GroqScorer._CATEGORY_KEYS:
+            if key not in parsed:
+                raise ValueError(f"JSON missing '{key}'")
+            values[key] = GroqScorer._check_score(parsed[key], key)
 
         reason = parsed.get("reason")
         if not isinstance(reason, str) or not reason.strip():
+<<<<<<< HEAD
             raise ValueError("Reason must be a non-empty string")
         return ScoreResult(score=int(round(score)), reason=reason)
+=======
+            reason = None
+        return ScoreResult(categories=CategoryScores(**values), reason=reason)
+>>>>>>> 87a6783 (add three compatability scoring)

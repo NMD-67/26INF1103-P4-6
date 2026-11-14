@@ -2,8 +2,11 @@
 
 from dataclasses import dataclass
 
+from .category_scores import CategoryScores
+
 @dataclass(frozen=True)
 class ScoreResult:
-    """Immutable result of scoring one pair."""
-    score: int
+    """AI output for one pair. `overall` is filled in by ScoreCalculator, not the AI."""
+    categories: CategoryScores
     reason: str | None = None
+    overall: int | None = None

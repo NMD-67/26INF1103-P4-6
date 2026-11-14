@@ -1,18 +1,33 @@
 # Orchestrates loading users, scoring each candidate, and saving the results through the match service.
 
 import logging
-logger = logging.getLogger(__name__)
 
 from .compatibility_scorer import CompatibilityScorer
 from .user_source import UserSource
 
+logger = logging.getLogger(__name__)
+
+from dataclasses import replace
+from .score_calculator import ScoreCalculator
+
 class MatchingService:
     """Orchestrates: load users -> score each -> save. Depends on abstractions only."""
 
-    def __init__(self, scorer: CompatibilityScorer, users: UserSource, match_service):
-        self._scorer = scorer              # association/aggregation: injected, not owned
-        self._users = users
-        self._match_service = match_service
+    def __init__(self, scorer, users, match_service, calculator: ScoreCalculator | None = None):
+            self._scorer = scorer
+            self._users = users
+            self._match_service = match_service
+            self._calculator = calculator or ScoreCalculator()
+
+    def _get_decided_ids(self, student_id: str) -> set[str]:
+        """IDs this student already accepted or rejected. Empty set if the lookup fails."""
+        try:
+            result = self._match_service.get_decided_candidate_ids(str(student_id))
+            return set(result.data) if result.success else set()
+        except Exception:
+            # Safe fallback: decided rows keep their status on upsert, this only costs tokens
+            logger.exception("Could not load decided candidates for %s", student_id)
+            return set()
 
     def recommend(self, student_id: str, limit: int | None = None) -> dict:
         main = self._users.get_user(student_id)
@@ -30,17 +45,26 @@ class MatchingService:
 
         results = {}
         for c in candidates:
-            result = self._scorer.score(main, c)     # polymorphic call
+            result = self._scorer.score(main, c)
             if result is not None:
-                results[str(c.student_id)] = result
-        return dict(sorted(results.items(), key=lambda kv: kv[1].score, reverse=True))
+                overall = self._calculator.overall(result.categories)
+                results[str(c.student_id)] = replace(result, overall=overall)
+        return dict(sorted(results.items(), key=lambda kv: kv[1].overall, reverse=True))
 
     def save(self, student_id: str, results: dict) -> dict:
         counts = {"saved": 0, "not_saved": 0, "failed": 0}
         for cid, r in results.items():
             try:
+                cat = r.categories
                 out = self._match_service.create_match(
-                    str(student_id), cid, float(r.score), r.reason)
+                    student_id=student_id,
+                    candidate_id=cid,
+                    compatibility_score=r.overall,
+                    interest_score=r.categories.interests_lifestyle,
+                    personality_score=r.categories.personality_values,
+                    preferences_score=r.categories.relationship_goals,
+                    reason=r.reason
+                )
             except Exception:
                 logger.exception("create_match crashed for %s", cid)
                 counts["failed"] += 1

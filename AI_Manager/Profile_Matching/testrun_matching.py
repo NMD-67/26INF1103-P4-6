@@ -24,10 +24,15 @@ if __name__ == "__main__":
             RepositoryUserSource(UserRepo(pool)),
             MatchService(MatchesRepo(pool)),
         )
-        results = service.recommend("2603197", limit=5)
+        results = service.recommend("2605779", limit=5)
         for cid, r in results.items():
-            print(cid, r.score, r.reason)
-        print(service.save("2603197", results))
+            c = r.categories
+            print(cid, "overall:", r.overall,
+                "| interests:", c.interests_lifestyle,
+                "| personality:", c.personality_values,
+                "| goals:", c.relationship_goals,
+                "|", r.reason)
+        print(service.save("2605779", results))
     finally:
         keys.close()
         pool.close()

@@ -63,22 +63,23 @@ class MatchService:
         """Handles user action for a candidate (Accept/Reject)"""
         decision = "accepted" if accepted else "rejected"
         success = self.match_repo.edit_status(student_id, candidate_id, decision)
-        try:
-            matches_id_result = self.get_mutual_connections(student_id)
-            if matches_id_result.success:
-                match_id_list = matches_id_result.data
-                if candidate_id in match_id_list:
-                    email_address = f"{candidate_id}@sit.singaporetech.edu.sg"
-                    threading.Thread(
-                        target=self._email_sender.send_sync,
-                        kwargs={
-                            "to_email": email_address,
-                            "subject": "Someone Liked Your Profile!",
-                            "html_content": f"Congratulations! Someone liked your profile!",
-                        },
-                    ).start()
-        except Exception as e:
-            logger.exception(e)
+        if "accepted":
+            try:
+                matches_id_result = self.get_mutual_connections(student_id)
+                if matches_id_result.success:
+                    match_id_list = matches_id_result.data
+                    if candidate_id in match_id_list:
+                        email_address = f"{candidate_id}@sit.singaporetech.edu.sg"
+                        threading.Thread(
+                            target=self._email_sender.send_sync,
+                            kwargs={
+                                "to_email": email_address,
+                                "subject": "Someone Liked Your Profile!",
+                                "html_content": f"Congratulations! Someone liked your profile!",
+                            },
+                        ).start()
+            except Exception as e:
+                logger.exception(e)
         if success:
             return Success("Status Updated")
         return Error("Failed to update status")

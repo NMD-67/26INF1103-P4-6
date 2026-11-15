@@ -179,10 +179,12 @@ class OfflineChecks(unittest.TestCase):
         self.assertTrue(service.create_match("A", "B", 63, 90, 60, 30, "Reason").success)
         query, values = conn.execute.call_args.args
         self.assertEqual(values, ("A", "B", 63, "Reason", 90, 60, 30))
-        update = query.split("DO UPDATE SET")[1].split("RETURNING")[0]
+        update = " ".join(query.split("DO UPDATE SET")[1].split("RETURNING")[0].split())
+        assignments, condition = update.split("WHERE", 1)
         for field in ("interest_score", "personality_score", "preferences_score"):
             self.assertIn(f"{field} = EXCLUDED.{field}", update)
-        self.assertNotIn("status =", update)
+        self.assertNotIn("status =", assignments)
+        self.assertIn("matches.status = 'pending'", condition)
 
     def test_scores_display_for_candidates_and_failed_connection_suggestions(self):
         from IO_Manager.console_io import ConsoleIO
@@ -493,6 +495,8 @@ def load_tests(loader, tests, pattern):
     # Only maintained offline checks; never discover scripts that call live services.
     from AI_Manager.Suggestions_generator.test_user_feedback import UserFeedbackTests
     tests.addTests(loader.loadTestsFromTestCase(UserFeedbackTests))
+    from ci.reviewer_tests import ReviewerChecks
+    tests.addTests(loader.loadTestsFromTestCase(ReviewerChecks))
     from ci.quality_tests import QualityChecks
     tests.addTests(loader.loadTestsFromTestCase(QualityChecks))
     from ci.telegram_tests import TelegramChecks
@@ -510,4 +514,5 @@ if __name__ == "__main__":
         guards.enter_context(patch("socket.socket.connect", side_effect=RuntimeError("Network disabled in CI tests")))
         guards.enter_context(patch("socket.socket.connect_ex", side_effect=RuntimeError("Network disabled in CI tests")))
         guards.enter_context(patch("builtins.input", side_effect=RuntimeError("Interactive input disabled in CI tests")))
+        guards.enter_context(patch("AI_Manager.Profile_Matching.AI_Validator_Workflow.sentence_similarity.SentenceSimilarity.from_env", side_effect=RuntimeError("Local model disabled for unit tests")))
         unittest.main(verbosity=2)

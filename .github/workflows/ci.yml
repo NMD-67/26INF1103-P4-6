@@ -28,3 +28,10 @@ jobs:
 
       - name: Run offline regression tests
         run: docker run --rm --network none sitogether-ci python ci/offline_tests.py
+
+      - name: Verify packaged embeddings without network
+        run: >-
+          docker run --rm --network none sitogether-ci python -c
+          "from AI_Manager.Profile_Matching.AI_Validator_Workflow.sentence_similarity import SentenceSimilarity;
+          model = SentenceSimilarity.from_env(); score = model.compare('coding and games', 'coding and games');
+          assert score is not None and 0 <= score <= 100, score"

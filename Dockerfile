@@ -6,7 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 COPY requirements.txt .
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Download at build time; matching uses this model without runtime networking.
+ENV LOCAL_EMBEDDING_MODEL=/app/embedding-model
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2').save('/app/embedding-model')"
+ENV HF_HUB_OFFLINE=1
 
 COPY tele/ ./tele/
 COPY Data_Manager/ ./Data_Manager/

@@ -1,4 +1,5 @@
 """Shared recommendation workflow for the CLI and Telegram."""
+from AI_Manager.Profile_Matching.AI_Validator_Workflow.reviewer_factory import create_reviewer
 from Logic_Manager.Matching.scoring_pipeline import ScoringPipeline
 from results.success import Success
 from results.error import Error
@@ -9,7 +10,7 @@ class RecommendationService:
         self._users = users
         self._matches = matches
         self._scoring = scoring
-        self._pipeline = ScoringPipeline(scoring, matches)
+        self._pipeline = ScoringPipeline(scoring, matches, reviewer_factory=create_reviewer)
 
     def eligible_users(self, student_id):
         eligible = self._users.filter_users_by_dealbreaker(student_id)

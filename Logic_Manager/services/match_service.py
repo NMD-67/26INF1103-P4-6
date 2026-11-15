@@ -63,7 +63,7 @@ class MatchService:
         """Handles user action for a candidate (Accept/Reject)"""
         decision = "accepted" if accepted else "rejected"
         success = self.match_repo.edit_status(student_id, candidate_id, decision)
-        if "accepted":
+        if decision == "accepted":
             try:
                 matches_id_result = self.get_mutual_connections(student_id)
                 if matches_id_result.success:

@@ -1,4 +1,5 @@
 """Send OTP email with a bounded timeout and injectable configuration."""
+
 import asyncio
 import logging
 import os
@@ -17,6 +18,9 @@ class EmailSender:
     async def send(self, to_email, subject, html_content):
         # SMTP is blocking; keep it off the Telegram/async event loop.
         return await asyncio.to_thread(self._send, to_email, subject, html_content)
+
+    def send_sync(self, to_email, subject, html_content):
+        return self._send(to_email, subject, html_content)
 
     def _send(self, to_email, subject, html_content):
         password = os.getenv("EMAIL_PASSWORD")

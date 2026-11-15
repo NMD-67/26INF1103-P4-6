@@ -5,8 +5,12 @@ from results.success import Success
 from AI_Manager.Profile_Matching.groq_scorer import GroqScorer, GroqKeyPool
 from Data_Manager.repository_user_source import RepositoryUserSource
 from Data_Manager.repositories.user_repo import UserRepo
-from AI_Manager.Profile_Matching.AI_Validator_Workflow.reviewer_factory import create_reviewer
+from AI_Manager.Profile_Matching.AI_Validator_Workflow.reviewer_factory import (
+    create_reviewer,
+)
 import logging
+import threading
+from IO_Manager.email_sender import EmailSender
 
 from Logic_Manager.Matching.matching_service import MatchingService
 
@@ -17,6 +21,7 @@ class MatchService:
     def __init__(self, match_repo: MatchesRepo, user_source=None):
         self.match_repo = match_repo
         self._users = user_source
+        self._email_sender = EmailSender()
         if self._users is None:
             self._users = RepositoryUserSource(UserRepo(match_repo.pool))
 
@@ -32,7 +37,13 @@ class MatchService:
     ) -> Result:
         """Create a new match in the database."""
         success = self.match_repo.create_match(
-            student_id, candidate_id, compatibility_score, reason, interest_score, personality_score, preferences_score
+            student_id,
+            candidate_id,
+            compatibility_score,
+            reason,
+            interest_score,
+            personality_score,
+            preferences_score,
         )
         if success:
             return Success(data={"message": "Match created successfully"})
@@ -52,16 +63,27 @@ class MatchService:
         """Handles user action for a candidate (Accept/Reject)"""
         decision = "accepted" if accepted else "rejected"
         success = self.match_repo.edit_status(student_id, candidate_id, decision)
+        try:
+            matches_id_result = self.get_mutual_connections(student_id)
+            if matches_id_result.success:
+                match_id_list = matches_id_result.data
+                if candidate_id in match_id_list:
+                    email_address = f"{candidate_id}@sit.singaporetech.edu.sg"
+                    threading.Thread(
+                        target=self._email_sender.send_sync,
+                        kwargs={
+                            "to_email": email_address,
+                            "subject": "Someone Liked Your Profile!",
+                            "html_content": f"Congratulations! Someone liked your profile!",
+                        },
+                    ).start()
+        except Exception as e:
+            logger.exception(e)
         if success:
             return Success("Status Updated")
         return Error("Failed to update status")
 
-    
-    def get_next_candidate(
-        self,
-        student_id: str,
-        generated: bool = False
-    ) -> Result:
+    def get_next_candidate(self, student_id: str, generated: bool = False) -> Result:
         """
         Retrieve the next eligible candidate.
 
@@ -73,28 +95,14 @@ class MatchService:
 
         try:
             # Step 1: Exclude decided candidates
-            excluded = set(
-                self.match_repo.get_decided_candidate_ids(
-                    student_id
-                )
-            )
+            excluded = set(self.match_repo.get_decided_candidate_ids(student_id))
 
-            eligible = self._users.get_candidates(
-                student_id,
-                exclude=excluded
-            )
+            eligible = self._users.get_candidates(student_id, exclude=excluded)
 
-            eligible_ids = {
-                str(user.student_id)
-                for user in eligible
-            }
+            eligible_ids = {str(user.student_id) for user in eligible}
 
             # Step 2: Retrieve existing pending matches
-            pending = (
-                self.match_repo.get_candidates_for_user(
-                    student_id
-                )
-            )
+            pending = self.match_repo.get_candidates_for_user(student_id)
 
             for candidate in pending:
                 if str(candidate.student_id) in eligible_ids:
@@ -102,71 +110,42 @@ class MatchService:
 
             # Step 3: Check whether new matches are possible
             if not eligible or generated:
-                return Error(
-                    "No new profiles match your current preferences."
-                )
+                return Error("No new profiles match your current preferences.")
 
             # Step 4: Initialise Groq
             keys = GroqKeyPool.from_env()
 
             # Step 5: Initialise hybrid validation
-            reviewer = create_reviewer(
-                tolerance=25,
-                dry_run=False
-            )
+            reviewer = create_reviewer(tolerance=25, dry_run=False)
 
             # Step 6: Generate validated recommendations
             service = MatchingService(
-                GroqScorer(keys),
-                self._users,
-                self,
-                reviewer=reviewer
+                GroqScorer(keys), self._users, self, reviewer=reviewer
             )
 
-            results = service.recommend(
-                student_id,
-                limit=5
-            )
+            results = service.recommend(student_id, limit=5)
 
             if not results:
-                return Error(
-                    "No new recommendations are available."
-                )
+                return Error("No new recommendations are available.")
 
             # Step 7: Save recommendations
-            counts = service.save(
-                student_id,
-                results
-            )
+            counts = service.save(student_id, results)
 
-            logger.info(
-                "Recommendation save summary: %s",
-                counts
-            )
+            logger.info("Recommendation save summary: %s", counts)
 
             if counts["saved"] > 0:
-                return self.get_next_candidate(
-                    student_id,
-                    generated=True
-                )
+                return self.get_next_candidate(student_id, generated=True)
 
-            return Error(
-                "Could not save recommendations."
-            )
+            return Error("Could not save recommendations.")
 
         except Exception:
-            logger.exception(
-                "Could not retrieve next recommendation"
-            )
+            logger.exception("Could not retrieve next recommendation")
 
-            return Error(
-                "Recommendations are temporarily unavailable."
-            )
+            return Error("Recommendations are temporarily unavailable.")
 
         finally:
             if keys is not None:
                 keys.close()
-
 
     def get_all_matches(self, student_id: str) -> Result:
         """Return profiles where both students accepted each other."""

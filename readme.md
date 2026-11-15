@@ -1,240 +1,374 @@
-# **SITogether**
+# SITogether
 
-**_1\. Problem Statement and Target Users_**
+SITogether helps Singapore Institute of Technology students discover friendships
+and relationships beyond their existing classes and social circles. It is an
+INF1103 Phase 2 object-oriented project with a terminal application and Telegram
+bot sharing the same profile, recommendation and connection services.
 
-- **Problem Statement:** SIT students have **limited** opportunities to discover and meaningfully interact with new people beyond **face-to-face** encounters, making it **difficult** to form **new social and romantic relationships**.
-- **Background:** Despite being part of a **large student community,** students may only interact with a **small** group of people through their **classes**, **clubs**, or **existing social circles**. As a result, many students may not have the opportunity to meet or get to know others across the **wider SIT community**.
-- **Objective:** To create a programme that provides SIT students with more opportunities to discover, interact with, and get to know **new** people, with the aim of **encouraging meaningful social** and **romantic connections**.
-- **Target Audience:** SIT Students
+The active application uses **PostgreSQL**, **Groq** and a local embedding model.
+It no longer uses Google Sheets or local JSON files for profile storage.
 
-**_2\. User Inputs \- Link to Google Sheets_**  
-**Background Information:**
+## Implemented features
 
-- Name, Birthday (DD/MM/YYYY), Religion, MBTI → 16 Personalities
-- Year, Course, Student ID
+- School email OTP login using a seven-digit student ID.
+- Profile creation, viewing, validated editing and account deletion.
+- Configurable age limits and mutual preference/dealbreaker filtering before AI scoring.
+- Three AI compatibility scores and a short explanation for each scored pair.
+- Independent interest, MBTI and relationship-goal checks that review AI scores.
+- Weighted overall scores, multi-condition compatibility labels and ranked recommendations.
+- Accept/reject decisions and connections after both students accept.
+- Contact handles and personalised conversation/activity suggestions for mutual connections.
+- Feedback-based suggestion regeneration in both CLI and Telegram, with up to three
+  regeneration attempts per review session. Failed regeneration retains previous suggestions.
+- Shared privacy notice, bio guidance, error logging and offline regression tests.
 
-**Personal Information:**
+Image verification, blocking/reporting, automatic moderation and learning from past
+accept/reject decisions are not implemented features. Excluding previously decided
+candidates is a filter, not a trained recommendation model.
 
-- Sexual Orientation: Heterosexual/ Homosexual/ Bisexual
-- Here For: Friends/ Relationship
-- Expectations in Relationships
+## Quick start with Docker
 
-**Extracurriculars:**
+Run commands from the repository root. Install and start Docker Desktop with Linux
+containers enabled. You also need a configured PostgreSQL database, OTP sender
+credentials and Groq keys; Telegram additionally needs a bot token.
 
-- Current CCAs/ Events Joined (in SIT), Hobbies,Outside Interest Group
-
-**_3\. Use of AI \- Claude_**
-
-| AI Feature                                   | How AI is Utilized                                                                                                           | AI Output/Recommendation                                                                                                         |
-| :------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| **Compatibility Matching**                   | AI will analyse user’s profiles, to identify similarities between two students.                                              | Generates a **_Compatibility Score_** and highlights key areas of similarity.                                                    |
-| **Personalised Match Recommendations**       | AI analyses a user’s profile together with profiles they liked or skipped, to better understand their preferences over time. | Recommends students who are more likely to be compatible with a user and improves on future matchmaking suggestions.             |
-| **Conversations & Date Suggestions**         | AI uses information from both matched user’s profiles and shared interests to generate personalised suggestions.             | Provides both users with: Conversation Starters Common-Interest Topics Possible Date Activities Relevant SIT Events              |
-| **Content Safety & Moderation**              | AI analyses messages and profile content for potentially inappropriate behavior.                                             | Flags potentially harmful content for review and warns users where appropriate. Repeated or serious violations are escalated.    |
-| **Profile Image Verification**               | AI analyses uploaded profile images for signs of manipulated, AI-generated or duplicated images.                             | Assigns a risk/verification result and flags suspicious images for further review rather than automatically banning the student. |
-| **Match Feedback & Compatibility Analytics** | AI analyses feedback after matches, such as whether users continued chatting or mutually liked each other.                   | Identifies patterns associated with successful matches and uses them to improve future compatibility recommendations.            |
-
-**_4\. Business Rules_**
-
-| SIT Student Validation                        | Only verified SIT students may create an account. Users must register using their SIT student email / Student ID.                                                                                                                                                          |
-| :-------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Account/Profile Eligibility**               | A user must have a **verified account and completed profile** before appearing in matchmaking recommendations.                                                                                                                                                             |
-| **Compatibility Range**                       | Matches will be according to the AI-generated compatibility score: **85 \- 100%**: High Compatibility **70 \- 84%**: Shown after high compatibility users **Below 70%**: Low Compatibility; Lower Priority                                                                 |
-| **Match Status**                              | **“Accept", “Reject”:** Social media handles will be revealed once a match is created.                                                                                                                                                                                     |
-| **Flag System _(Human-In-The- Loop System)_** | AI will assign potentially inappropriate or suspicious content a **risk/confidence score**. Low-confidence cases will not automatically penalise users. Content that exceeds a defined threshold will be **flagged for human review** before disciplinary action is taken. |
-| **Violation System**                          | Violations will be recorded against the user's account: **1st Violation:** In-App Warning **2nd Violation:** Email Warning **3rd Violation:** Escalate to Administrator                                                                                                    |
-| **Match Recommendation Rule**                 | Users who have already **rejected, blocked, or reported each other** will not be recommended to one another again. Existing matches should also be excluded from new recommendations.                                                                                      |
-| **Blocking & Reporting Rule**                 | When a user blocks another user, both users will be removed from each other's recommendations. Reports will be stored for administrator review.                                                                                                                            |
-
-## Technical Documentation
-
-### About
-
-This program's main interface is using the command line, as it is the minimum requirement for the project. In addition to the command line, we are also planning to add a Telegram Bot/Web Interface. Therefore, the structure of our program will be planned with these extensions in mind.
-
-#### Program Structure
-
-```
-project/
-|---src/
-|   |---auth.py           //Handles user CRUD (Create, Read, Update, Delete)
-|   |---ai_manager.py     //Handles API calls to AI systems
-|   |---logic_manager.py  //Handles user matching based on AI results
-|   |---email.py          //Email service for auth
-|---cli/
-|   |---main.py           //The file to run the app via CLI
-|---tele/
-|   |---bot.py            //The logic behind the tele bot
-|---api/
-|   |---server.py         //The server used for web interface
-|---database/
-|   |---db.py             //Handles the connection to the database
-```
-
-#### User fields
-
-```py
-{
-  student_id: int,
-  name: str,
-  birthday: int/datetime,
-  gender: str,
-  year: int,
-  course: str,
-  bio: str,               #Optional
-  religion: str,          #Optional
-  MBTI: str,              #Optional
-  sexual_orientation: str,
-  here_for: str,          #Friends/Relationship
-  expectation: str,       #Short/Long term etc.
-  cca: [str],             #Optional
-  sit_events: [str],      #Optional
-  hobbies: [str],
-  interest_groups: [str], #Optional
-  insta_handle: str,      #Optional
-  tele_handle: str        #Optional
-}
-```
-
-##### How to add user as JSON
-
-Go to `/database/db` and scroll to the bottom. There is an example of how it can be done. Simply replace the `student_json` object with the one you wanna import.
-
-#### auth.py
-
-This file contans all the functions and modules for user handling. Note that as the functions require updating of the database, all the functions are asynchronious. The functions are as such:
-| Function | Parameters | Return | Remarks |
-|---|---|---|---|
-|Login | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the login |
-|GetUserInfo | student_id `int` | Dict {<br>success: `bool`,<br> user: `dict`,<br> status: `int`, error: `str`<br>} | Return value will on have an error value if an error occured. |
-|UpdateUserInfo | student_id `int` | status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the update |
-|DeleteUser | student_id `int`| status `int` | Returns a [http status](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status) depending on the progress of the deletion |
-
-## Profile CLI and Google Sheets sync
-
-Run from the repository root:
+1. Set up the database as described below.
+2. Create a local `.env` using the configuration example below.
+3. Build the shared image:
 
 ```powershell
-py -m pip install -r requirements.txt
-py main.py
+docker build -t sitogether .
 ```
 
-Profiles are stored only in the `users` tab of the SITogether spreadsheet.
-Place the Google service account credentials at `database/service_account.json`
-locally; never commit credentials. This credential file is still required and is
-not a profile database. The service account needs edit access to the sheet.
-
-Saving matches the exact `student_id` column and refuses duplicate IDs. It
-updates only form fields, preserving unrelated columns.
-Lists display as comma-separated text, with empty lists shown as blank cells.
-MBTI personality names and completeness are calculated when needed, not stored separately.
-There is no offline profile save or automatic retry. A connection failure is
-reported to the user; a failed request may require checking Sheets and retrying.
-
-The September 2026 header migration keeps `bio`, renames `expectation` to
-`expectations`, `cca` to `ccas`, `sit_event` to `events`, and `tele_handle` to
-`telegram_handle`. `sexual_orientation` is replaced by `match_preference`;
-existing users must re-enter Male, Female, or Both. Original profiles are in
-`users_backup_20260928_before_headers`. Keep other running bot copies aligned
-with these new headers.
-
-Run the offline sync regression checks without credentials or live API calls:
+4. Run the terminal application:
 
 ```powershell
-py tests/test_profile_sync.py
+docker run --rm -it --env-file .env sitogether
 ```
 
-These checks supplement, but do not replace, the assignment's AI business-rule tests.
-
-## Telegram profile setup
-
-Start the bot from the repository root (with dependencies installed):
+Or run the Telegram bot using the same image:
 
 ```powershell
-py -m tele.bot
+docker run --rm --env-file .env sitogether python -m tele.bot
 ```
 
-The existing `.env` supplies `TELE_API_KEY` and `EMAIL_PASSWORD` for the bot
-and email login. The existing service-account file is required for Sheets.
-Run only one polling instance of this bot token; coordinate with the team
-before replacing an already-running instance.
+The Dockerfile defaults to `python main.py`; overriding the command starts the bot
+or tests. There is one Dockerfile for all three uses. No ports need publishing for
+terminal use or Telegram polling. Run only one polling process per bot token.
 
-In a private Telegram chat:
+The build downloads CPU PyTorch, sentence-transformers and the embedding model.
+It needs internet access and produces a larger image than the earlier application.
+The model is stored at `/app/embedding-model` and needs no network during review.
+Normal application use still needs access to PostgreSQL, Groq, email and, for the
+bot, Telegram. Credentials are supplied at runtime rather than baked into the image.
 
-1. `/login <student_id>` and then `/otp <student_id> <otp>` verify the account.
-2. `/setup` collects the same profile fields as the CLI, using the verified ID.
-3. Reply with text or option numbers; `/skip` skips optional questions only.
-4. Review the summary and send `/save` to save to the `users` row in Sheets.
-5. `/profile` displays the saved sheet profile. Its setup button restarts the full form.
+## Configuration
 
-`/cancel` discards an unsaved draft; `/setup` starts it again. Nothing is
-written until `/save`. If saving to Sheets fails, the draft stays in the running
-bot and `/save` can retry. Drafts exist only in memory and are lost on bot restart. Existing
-single-field editing remains available; finish or cancel setup before using it.
+Create `.env` in the repository root. The following values are placeholders, not
+working credentials. There is currently no committed `.env.example` file.
 
-Offline Telegram tests (no real email, Telegram messages or Sheets writes):
+```dotenv
+SUPABASE_URL=postgresql://USER:PASSWORD@HOST:5432/postgres
+EMAIL_PASSWORD=YOUR_CONFIGURED_SENDER_APP_PASSWORD
+PROFILE_MATCHING_API_KEY=YOUR_GROQ_SCORING_KEY
+MATCHMAKING_API_KEY=YOUR_GROQ_SUGGESTION_KEY
+RAPH_AI_KEY=YOUR_OPTIONAL_BACKUP_SUGGESTION_KEY
+TELE_API_KEY=YOUR_TELEGRAM_BOT_TOKEN
+```
+
+| Setting | Purpose |
+| --- | --- |
+| `SUPABASE_URL` | PostgreSQL connection URI, including database credentials. Despite its name, this is not the Supabase HTTPS API URL. SSL is required by the connection class. |
+| `EMAIL_PASSWORD` | SMTP credential for the sender configured in `IO_Manager/email_sender.py`. The default sender is the team's Gmail address; changing only the password does not change the sender. |
+| `PROFILE_MATCHING_API_KEY` | Groq compatibility-scoring key. `GROQ_API_KEY` is a fallback variable name. |
+| `GROQ_KEY_NAMES` | Optional comma-separated environment variable names for multiple scoring keys, tried in order. Overrides the default scoring-key lookup. |
+| `MATCHMAKING_API_KEY` | Primary Groq key for connection suggestions. |
+| `RAPH_AI_KEY` | Optional backup Groq key for connection suggestions. Omit if unused. |
+| `TELE_API_KEY` | Telegram bot token; required only for the bot. |
+| `LOCAL_EMBEDDING_MODEL` | Optional local model directory for direct Python execution. Docker configures its own packaged directory. |
+
+For example, multiple scoring keys can be configured as:
+
+```dotenv
+GROQ_KEY_NAMES=PROFILE_MATCHING_API_KEY,SCORING_BACKUP_KEY
+PROFILE_MATCHING_API_KEY=YOUR_FIRST_KEY
+SCORING_BACKUP_KEY=YOUR_SECOND_KEY
+```
+
+Do not commit `.env`, connection passwords, API keys, email credentials or database
+exports containing personal data. Environment variables already set in your shell
+can take precedence over values loaded from `.env`.
+
+Missing scoring credentials disable Find matches rather than blocking startup.
+Unavailable suggestion credentials should not hide existing connection contacts.
+Database and email access are still required for normal login.
+
+## Database setup
+
+The repositories use direct PostgreSQL connections through psycopg. Supabase can
+host the database, but the application's active storage path does not use its HTTP SDK.
+
+- **New empty development database:** run
+  [`Data_Manager/database/schema.sql`](Data_Manager/database/schema.sql) using a SQL
+  client or the Supabase SQL editor. It creates tables, constraints and relationships.
+- **Existing shared database:** do not rerun the complete schema as an upgrade.
+  Review [`verify_constraints.sql`](Data_Manager/database/verify_constraints.sql)
+  and coordinate any migration with the database owner.
+- Existing databases need the current profile/contact and score columns. For birthday
+  restoration, see [`003_restore_birthday.sql`](Data_Manager/database/migrations/003_restore_birthday.sql).
+  Verify an existing birthday column has type `DATE`; the migration does not convert it.
+- Migration files represent historical changes. In particular, migration 002 removed
+  birthday storage and migration 003 restores it. Do not execute historical scripts
+  blindly against a populated database.
+
+See [database setup notes](docs/database_setup.md). Adding schema files to Git does
+not apply them to the live database. Check create/update/reload, matching decisions,
+mutual connections and deletion using disposable development accounts.
+
+## Run directly with Python
+
+Python 3.12 is the Docker baseline. Use an isolated environment from the repository root:
 
 ```powershell
-py tests/test_telegram_setup.py
-py tests/test_profile_sync.py
+py -3.12 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-The Dockerfile includes the shared profile modules used by the bot. The live
-Telegram/OTP flow and Docker build still require verification in the team's
-runtime; offline tests do not contact these external services.
-
-### Shared profile saving
-
-`database.db.save_profile()` is the common saving entry point for terminal
-setup, Telegram setup, and individual edits. All profile storage functions
-and the Google Sheets connection now live in `database/db.py`. `partial=True` updates only the edited
-fields; the default saves the complete profile. The result contains `saved`
-and `message`. A failed save keeps the Telegram draft/edit active for retry.
-No local profile file is read, written, or recreated.
-
-`database.db.get_profile()` reads a profile from Sheets and converts list
-cells into Python lists. It looks up the MBTI personality name in memory. `database/db.py` also
-keeps the existing OTP and Telegram-account-link operations. It connects on
-first use, using `SITOGETHER_SPREADSHEET_ID` or the project default.
-
-### Reading the profile code
-
-Start with `profile_schema.py` for questions and `main.py` for the terminal flow.
-The Telegram code uses `tele/bot.py` for commands and editing, and
-`tele/profile_setup.py` for setup and shared question/button functions.
-Courses use typed numbered answers. Each user's `context.user_data` holds the
-current draft or edit in memory. Session tokens reject old buttons.
-
-Run all offline checks with:
+For full local interest review, download the model once to a directory outside the
+repository. Run this in a fresh process, before importing the application:
 
 ```powershell
-py tests/test_profile_sync.py
-py tests/test_shared_saving.py
-py tests/test_telegram_setup.py
-py tests/test_telegram_menus.py
-py tests/test_telegram_edits.py
+$env:LOCAL_EMBEDDING_MODEL = Join-Path $env:LOCALAPPDATA 'SITogether\embedding-model'
+.\venv\Scripts\python.exe -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2').save(os.environ['LOCAL_EMBEDDING_MODEL'])"
 ```
 
-This Sheets-only design does not implement the assignment's local CSV/JSON
-storage requirement. The team needs to resolve that requirement for submission.
+Set `LOCAL_EMBEDDING_MODEL` to the same path in future sessions or in your local
+`.env`. Do not carry a Windows model path into the Linux container; Docker uses
+`/app/embedding-model`.
 
-### Storage backend boundary
+```powershell
+.\venv\Scripts\python.exe main.py
+# Or:
+.\venv\Scripts\python.exe -m tele.bot
+```
 
-The CLI and Telegram profile flows call `database.db.get_profile(student_id)`
-and `database.db.save_profile(profile, partial=False)`. Login continues to use
-the existing user, OTP, and Telegram-link functions in the same module.
+Without the local model, the existing fallback logs a warning and retains the
+MBTI/goals checks, but skips semantic interest review. Full hybrid review requires
+the model. A manual live-service runner is not needed to launch either application.
 
-To replace Sheets with MongoDB, replace the storage implementation in `db.py`
-and keep these public function signatures, returned dictionary keys/status
-codes, and field types compatible. Full setup creates or updates a profile;
-partial edits update only supplied fields and must not create missing users.
-The CLI and Telegram callers should then need no storage-specific changes.
-MongoDB still requires its driver in `requirements.txt`, connection settings,
-database setup and any data migration. This project still uses Sheets today.
+## Using the application
 
-`data_manager.py` has been removed by project decision. Along with local file
-storage removal, this departs from the assignment's stated module requirements.
+### Terminal
 
-Instagram is an optional setup field stored in the existing `insta_handle` column.
-Users can enter their username with or without @, skip it during setup, and edit
-it through /profile. It appears as Instagram Handle in profile summaries.
+Read the privacy notice, enter your student ID and verify the OTP sent to
+`<student_id>@sit.singaporetech.edu.sg`. New users complete and confirm their profile.
+The main menu provides:
+
+1. Find matches: browse ranked profiles and accept, reject or return.
+2. View connections: see mutually accepted users, contact handles and suggestions.
+3. My profile: display saved details.
+4. Update profile: edit fields, review changes and confirm saving.
+5. Delete account: confirm account removal.
+6. Quit: leave the application.
+
+Unsaved profile drafts are held in memory. Failed edits retain the draft for retry
+within the running session; drafts do not survive restarting the application.
+
+### Telegram
+
+Open a private chat with the configured bot, then:
+
+1. Send `/start` or `/login`, read the notice and reply with your student ID.
+2. Reply with your OTP or send `/otp <code>`.
+3. Complete `/setup` if required, then use `/menu` or Telegram's command menu.
+
+| Command | Action |
+| --- | --- |
+| `/profile`, `/update` | View or edit your profile. |
+| `/matches` | Browse recommendations and accept/reject using buttons. |
+| `/connections` | View mutual contacts and suggestions; use Keep/Regenerate for feedback. |
+| `/setup`, `/save` | Collect profile answers and review/save the draft. |
+| `/skip` | Skip an optional question. |
+| `/cancel` | Cancel the current action. |
+| `/delete_account` | Start confirmed account deletion. |
+| `/logout` | End the Telegram account session. |
+| `/help`, `/menu` | Show help or available actions. |
+
+Choice questions use buttons; course selection uses a typed numbered answer.
+The CLI and bot use shared services, while their input and display adapters differ.
+
+## Matching and AI workflow
+
+```text
+Profile and preferences
+    -> mutual eligibility filtering; exclude self and previous decisions
+    -> Groq generates three scores and a reason
+    -> validate response structure and score ranges
+    -> independent hybrid review of category scores
+    -> calculate weighted overall and rank
+    -> save scores and reason in PostgreSQL
+    -> display recommendations and record accept/reject
+    -> mutual connection: reveal contacts and generate suggestions
+```
+
+The configured scoring model defaults to `openai/gpt-oss-20b`; suggestions use
+`openai/gpt-oss-120b`. These are code defaults, not a guarantee of provider availability.
+
+### Scores and review
+
+The three categories are interests/lifestyle, personality/values and relationship
+goals. Review uses local semantic interest similarity, an MBTI similarity table and
+deterministic goal rules. A category outside the review tolerance is brought within
+25 points of its independent check. Invalid reviewer values/counts are logged and
+previous valid scores are retained. Dry-run review logs changes without applying them.
+The original AI reason is preserved; review does not regenerate its wording.
+
+The overall score is calculated in Logic Manager, not by the AI:
+
+```text
+overall = round(0.40 * interests + 0.30 * personality + 0.30 * goals)
+```
+
+The multi-condition label uses all three stored category scores:
+
+- Strong compatibility: all three are at least 70.
+- Moderate compatibility: all three are at least 50, but the strong rule is not met.
+- Low compatibility: other valid combinations.
+- Not available: any category is missing or invalid.
+
+Scores and labels are project heuristics, not scientifically established probabilities.
+Both recommendations and connections display the scores, overall, label and reason.
+See [business-rule notes](docs/ai_business_rule.md).
+
+### Candidate count and API usage
+
+The normal CLI/Telegram `RecommendationService` currently scores **all eligible
+candidates** passed to it. Reopening Find matches can score pending candidates again;
+there is no claim of full scoring-cache reuse.
+
+The separate `MatchService.get_next_candidate()` route reuses eligible pending
+recommendations and generates up to **five candidates per batch** when needed.
+That means the first five eligible candidates before scoring, not the global top
+five after comparing everyone. It is not a permanent five-row database limit.
+Both paths now delegate scoring/review/calculation/saving to `ScoringPipeline`.
+
+## Code structure and responsibilities
+
+| Location | Responsibility |
+| --- | --- |
+| `main.py`, `sitogether_app.py` | CLI startup, service wiring and menu orchestration. |
+| `tele/bot.py` | Telegram startup and polling lifecycle. |
+| `IO_Manager/` | Console/Telegram input and display, profile forms/validation, email delivery adapter. |
+| `AI_Manager/` | Prompt construction, API clients, structured response parsing, suggestions and independent review components. |
+| `Logic_Manager/` | Profile rules, filtering, weighted scores, classification and application services. |
+| `Data_Manager/` | PostgreSQL pool, repositories, schema/migrations and user-source adapter. |
+| `models/` | User/Profile/Candidate/Match/DealBreaker and category-score value objects. |
+| `config/` | Shared field questions/options/storage metadata and privacy text. |
+| `results/`, `exceptions/` | Shared operation results and error types. |
+| `ci/`, `tests/` | Maintained offline checks and supporting test documentation. |
+| `.github/workflows/ci.yml` | Docker build, offline regression suite and packaged-model smoke check. |
+
+To change profile questions, start at `config/user_fields.py`. `PROFILE_FIELDS` is
+generated from the configuration rather than maintained as a separate schema file.
+The form captures identity/background, preferences, contact handles and interests.
+Dealbreakers are a nested model/storage structure, not a standalone input question.
+Race/religion dealbreaker lists are exclusion lists; they are distinct from the
+student's own race/religion fields.
+
+### OOP and SOL design evidence
+
+- Classes/encapsulation: application, services and repositories own state and expose
+  operations; internal collaborators commonly use `_` names by convention.
+- Abstraction/interfaces/inheritance: `CompatibilityScorer` and `UserSource` define
+  contracts; concrete scorers and the repository source implement them. Profile,
+  Candidate and Match extend the user model hierarchy.
+- Polymorphism/LSP: scoring clients use the same scorer contract for live, lazy and
+  fake scorers. Offline tests exercise substitutions without real API calls.
+- Association: services collaborate with separately supplied repositories/scorers.
+- Aggregation: the application receives services with independent lifetimes.
+- Composition: the key pool constructs and closes its owned Groq clients.
+- SRP: input adapters, AI calls, business calculations and persistence have separate
+  responsibilities. The shared pipeline coordinates rather than duplicating them.
+- OCP: new scorer or category-validator implementations can follow existing contracts
+  without rewriting the consumers' scoring loop.
+
+These examples support, but do not replace, the report's UML diagrams and explicit
+SRP/OCP/LSP explanations. Small startup/factory functions remain; the application
+behaviour is organised around collaborating objects.
+
+## Privacy and failure handling
+
+A privacy notice appears before collecting the student ID. Full birthday is currently
+stored as a PostgreSQL `DATE` and used to calculate age/horoscope. Dedicated name,
+student ID, birthday and contact fields are excluded from AI prompts. Free-text bio
+or expectations may still contain identifying information, so users are told not to
+enter it. Contact handles are displayed for mutual connections.
+
+Optional fields can be skipped; users can update or delete their account. Database
+foreign-key behaviour must match the supplied schema for complete related-row
+cleanup. A privacy notice alone is not a claim of full PDPA compliance.
+
+Failures are logged and surfaced through controlled results/menu messages. Examples
+include unavailable scoring keys, invalid AI responses, failed saves and unavailable
+suggestions. Live login still fails if database/email is unreachable. Failed suggestion
+generation preserves existing contact details. Do not publish logs containing personal data.
+
+## Tests and Continuous Integration
+
+Run the maintained offline suite without credentials or live services:
+
+```powershell
+python -B ci/offline_tests.py
+```
+
+Or use the same image as the application:
+
+```powershell
+docker run --rm --network none sitogether python ci/offline_tests.py
+```
+
+The suite covers profile validation/privacy, OTP handling, preference filtering,
+AI response parsing, key fallback, multi-condition rules, reviewer corrections and
+malformed outputs, ranking/saving, failure recovery and CLI/Telegram behaviour.
+Unit tests use fake external services and block network access; the heavy embedding
+model is mocked there. CI separately loads and runs the actual packaged embedding
+model with networking disabled.
+
+GitHub Actions runs on pushes, pull requests and manual dispatch. It builds Docker,
+runs offline tests and checks the packaged model. Check **Actions -> SITogether CI**
+for the result; a local test pass is not proof of a successful Docker build or CI run.
+
+Verification at this README update: **106 offline tests passed**. The latest Docker
+build/model check was not verified locally because Docker engine access was denied.
+Live PostgreSQL, email, Groq and Telegram checks are separate from offline tests.
+See [hybrid review notes](ci/HYBRID_REVIEW.md).
+
+## Team workflow and submission checks
+
+1. Fetch/pull the latest shared branch before starting work.
+2. Create a focused branch, for example `fix/profile-validation` or `feat/match-feedback`.
+3. Make a small change, run relevant checks and review the diff for secrets.
+4. Commit with a descriptive name, for example `fix: preserve profile draft after save failure`.
+5. Push the branch, open a pull request, obtain team review and check CI before merging.
+
+Before submission, verify the final committed image and both interfaces against a
+development database. Include the engineering report/UML, SOL explanations, exception
+matrix, new-feature explanation/tests, TeamAI-d records and the required repository/
+commit/CI evidence. Database CRUD supplies the project's additional advanced feature.
+
+The multi-condition rule above is implemented, but preservation of the original
+Phase 1 rule still needs comparison with that submission or documented lecturer
+approval for a replacement. This README does not certify every rubric item or a grade.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Database pool timeout | PostgreSQL URI, project availability, credentials, SSL and network access. A successful TCP port test alone does not prove database login works. |
+| OTP does not arrive | Configured sender credential, email delivery logs and school inbox. Never print the correct OTP to diagnose login. |
+| Groq authentication/model error | Correct key variable, key validity and configured model availability. |
+| Interest model unavailable | Build the updated image or configure a downloaded local model directory. MBTI/goals-only fallback is not full review. |
+| Telegram is silent/conflicting | Correct bot/token, running process and only one polling instance for that token. |
+| Missing column/ON CONFLICT error | Code/schema mismatch; review schema and constraints rather than removing validation. |
+| Docker engine connection error | Start Docker Desktop and ensure the Linux engine is accessible. |
+

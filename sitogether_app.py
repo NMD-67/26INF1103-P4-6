@@ -146,7 +146,22 @@ class SITogetherApp:
             saved = self._matches.handle_candidate_decision(
                 self._student_id, candidate.student_id, decision == "accept"
             )
-            self._io.show("Decision saved." if saved.success else saved.error_msg)
+            if not saved.success:
+                self._io.show_error(saved.error_msg)
+                continue
+            if decision != "accept":
+                self._io.show("Rejected. Moving to the next profile.")
+                continue
+            self._io.show("Accepted. Checking for a mutual match...")
+            connections = self._suggestions.get_matches_for_user(
+                self._student_id, other_id=candidate.student_id
+            )
+            if not connections:
+                self._io.show("Accepted. Waiting for the other student.")
+                continue
+            if any(connection.get("user_b") for connection in connections):
+                self._io.show("It's a match! Here are your connection details and suggestions.")
+            self._io.show_connections(connections)
 
     def view_connections(self):
         connections = self._suggestions.get_matches_for_user(self._student_id)

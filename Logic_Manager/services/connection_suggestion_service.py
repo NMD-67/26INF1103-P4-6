@@ -32,8 +32,8 @@ class ConnectionSuggestionService:
                 return details
         raise TypeError(f"Unsupported user type: {type(user).__name__}")
 
-    def get_matches_for_user(self, user_id: str) -> list[dict]:
-        """Call Match.generate_reccos once for each mutual Match object."""
+    def get_matches_for_user(self, user_id: str, other_id: str | None = None) -> list[dict]:
+        """Generate for confirmed mutual matches, optionally just one candidate."""
         user_id = str(user_id).strip()
         try:
             response = self._match_service.get_all_matches(user_id)
@@ -49,6 +49,10 @@ class ConnectionSuggestionService:
                 "user_a": user_id,
                 "error": "Connections are temporarily unavailable.",
             }]
+        # Filter before AI generation so acceptance does not regenerate every connection.
+        if other_id is not None:
+            matches = [match for match in matches
+                       if str(match.student_id).strip() == str(other_id).strip()]
         if not matches:
             return []
 
